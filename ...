@@ -1,0 +1,135 @@
+
+The problem in my previous responses was that I was adding explanatory text between files, like "Je génère maintenant les manifestes..." which broke the strict format. The filename must be on the line IMMEDIATELY before the opening ```.
+
+Let me now write all files with PERFECT formatting. No text between the filename and the opening ```. No text between the closing ``` and the next filename.
+
+Files to create:
+1. Cargo.toml (workspace root)
+2. shared/Cargo.toml
+3. shared/src/lib.rs
+4. client/Cargo.toml
+5. client/Trunk.toml
+6. client/index.html
+7. client/src/main.rs
+8. server/Cargo.toml
+9. server/src/main.rs
+
+Let me write each file's content:
+
+**Cargo.toml:**
+[workspace]
+members = ["client", "server", "shared"]
+resolver = "2"
+
+**shared/Cargo.toml:**
+[package]
+name = "astrobrwal-shared"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+**shared/src/lib.rs:**
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Vec2 {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl Vec2 {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+
+    pub fn zero() -> Self {
+        Self { x: 0.0, y: 0.0 }
+    }
+
+    pub fn length(self) -> f32 {
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+
+    pub fn normalize(self) -> Self {
+        let len = self.length();
+        if len == 0.0 {
+            return Self::zero();
+        }
+        Self { x: self.x / len, y: self.y / len }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Input {
+    Up,
+    Down,
+    Left,
+    Right,
+    Fire,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlayerState {
+    pub id: u32,
+    pub position: Vec2,
+    pub velocity: Vec2,
+    pub rotation: f32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum NetMessage {
+    Input { player_id: u32, input: Input },
+    State { player: PlayerState },
+    FullState { players: Vec<PlayerState> },
+}
+
+**client/Cargo.toml:**
+[package]
+name = "astrobrwal-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+macroquad = { version = "0.10", features = ["wasm"] }
+astrobrwal-shared = { path = "../shared" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+**client/Trunk.toml:**
+[watch]
+ignore = ["target"]
+
+[serve]
+address = "127.0.0.1"
+port = 8080
+
+**client/index.html:**
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>AstroBrawl</title>
+</head>
+<body>
+    <script type="module">
+        import init from "./pkg/astrobrwal-client.js";
+        init();
+    </script>
+</body>
+</html>
+
+**client/src/main.rs:**
+use macroquad::prelude::*;
+
+const WINDOW_W: f64 = 1280.0
+const WINDOW_H: f64 = 720.0
+
+fn main() {
+    let mut window = WindowSettings::new()
+        .with_title("AstroBrawl")
+        .with_size(WINDOW_W, WINDOW_H)
