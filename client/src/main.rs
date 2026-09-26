@@ -114,6 +114,49 @@ mod net {
     }
 }
 
+// --- Audio Engine Bridge ---
+pub mod audio {
+    pub const SFX_LASER: i32 = 1;
+    pub const SFX_MINING: i32 = 2;
+    pub const SFX_EXPLOSION: i32 = 3;
+    pub const SFX_TARGET_LOCK: i32 = 4;
+    pub const SFX_TARGET_LOST: i32 = 5;
+    pub const SFX_COLLECT: i32 = 6;
+    pub const SFX_LEVEL_UP: i32 = 7;
+    pub const SFX_WARP: i32 = 8;
+    pub const SFX_SHIELD_HIT: i32 = 9;
+    pub const SFX_HULL_HIT: i32 = 10;
+    pub const SFX_CRAFT: i32 = 11;
+    pub const SFX_UI_CLICK: i32 = 12;
+    pub const SFX_ZONE_SAFE: i32 = 13;
+    pub const SFX_RESPAWN: i32 = 14;
+    pub const SFX_ALARM: i32 = 15;
+
+    #[cfg(target_arch = "wasm32")]
+    extern "C" {
+        pub fn mq_play_sfx(id: i32);
+        pub fn mq_toggle_mute() -> i32;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn play(id: i32) {
+        unsafe { mq_play_sfx(id) };
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn toggle_mute() -> bool {
+        unsafe { mq_toggle_mute() == 1 }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn play(_id: i32) {}
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn toggle_mute() -> bool {
+        false
+    }
+}
+
 // --- Visual FX ---
 struct Particle {
     pos: Vec2,
@@ -178,6 +221,8 @@ struct GameClient {
     active_modal: ActiveModal,
     notification_text: String,
     notification_timer: f32,
+    is_muted: bool,
+    alarm_sound_timer: f32,
 
     // Particles & Parallax
     particles: Vec<Particle>,
@@ -245,6 +290,8 @@ impl GameClient {
             active_modal: ActiveModal::None,
             notification_text: "Bienvenue dans AstroBrawl ! Rejoignez la base spatiale au centre.".to_string(),
             notification_timer: 6.0,
+            is_muted: false,
+            alarm_sound_timer: 0.0,
 
             particles: Vec::new(),
             float_texts: Vec::new(),
@@ -462,6 +509,30 @@ impl GameClient {
                 self.is_offline_sim = true;
             }
             ServerMessage::WorldSnapshot(snapshot) => {
+                if let Some(p) = snapshot.players.iter().find(|p| p.id == self.local_player_id) {
+                    if self.local_ship.is_alive && !p.is_alive {
+                        audio::play(audio::SFX_EXPLOSION);
+                    } else if p.is_alive {
+                        if p.shield < self.local_ship.shield {
+                            audio::play(audio::SFX_SHIELD_HIT);
+                        } else if p.health < self.local_ship.health {
+                            audio::play(audio::SFX_HULL_HIT);
+                        }
+                        if p.level > self.local_ship.level {
+                            audio::play(audio::SFX_LEVEL_UP);
+                        } else if p.credits > self.local_ship.credits || p.cargo.used_capacity() > self.local_ship.cargo.used_capacity() {
+                            audio::play(audio::SFX_COLLECT);
+                        }
+                        if p.is_in_safe_zone && !self.local_ship.is_in_safe_zone {
+                            audio::play(audio::SFX_ZONE_SAFE);
+                        }
+                    }
+                }
+
+                if snapshot.aliens.len() < self.aliens.len() && !self.aliens.is_empty() {
+                    audio::play(audio::SFX_EXPLOSION);
+                }
+
                 self.current_map = snapshot.current_map;
                 self.lasers = snapshot.lasers;
                 self.minerals = snapshot.minerals;
@@ -474,6 +545,11 @@ impl GameClient {
                         self.local_ship = p.clone();
                     }
                     self.players.insert(p.id, p);
+                }
+            }
+            ServerMessage::PlayerKilled { victim_id, .. } => {
+                if victim_id == self.local_player_id {
+                    audio::play(audio::SFX_EXPLOSION);
                 }
             }
             ServerMessage::Notification {
@@ -553,6 +629,9 @@ impl GameClient {
         // Check Safe Zone status
         let dist_to_base = player_pos.distance_to(self.space_base.position);
         let in_safe_zone = dist_to_base <= self.space_base.radius;
+        if in_safe_zone && !self.local_ship.is_in_safe_zone {
+            audio::play(audio::SFX_ZONE_SAFE);
+        }
         self.local_ship.is_in_safe_zone = in_safe_zone;
 
         // Space Base health and shield regeneration
@@ -563,6 +642,15 @@ impl GameClient {
         } else if self.local_ship.is_alive {
             let regen = 4.0 * dt * (1.0 + self.local_ship.talents.defense_regen as f32 * 0.15);
             self.local_ship.shield = (self.local_ship.shield + regen).min(self.local_ship.max_shield);
+
+            // Low Hull Alert Warning
+            let now_f = get_time() as f32;
+            if self.local_ship.health < self.local_ship.max_health * 0.30 {
+                if now_f - self.alarm_sound_timer > 1.4 {
+                    self.alarm_sound_timer = now_f;
+                    audio::play(audio::SFX_ALARM);
+                }
+            }
         }
 
         // Alien AI Simulation
@@ -638,8 +726,10 @@ impl GameClient {
                             alien.shield -= absorbed;
                             let remaining = dmg - absorbed;
                             alien.health -= remaining;
+                            audio::play(audio::SFX_SHIELD_HIT);
                         } else {
                             alien.health -= dmg;
+                            audio::play(audio::SFX_HULL_HIT);
                         }
 
                         if alien.health <= 0.0 {
@@ -658,8 +748,10 @@ impl GameClient {
                         self.local_ship.shield -= absorbed;
                         let remaining = dmg - absorbed;
                         self.local_ship.health -= remaining;
+                        audio::play(audio::SFX_SHIELD_HIT);
                     } else {
                         self.local_ship.health -= dmg;
+                        audio::play(audio::SFX_HULL_HIT);
                     }
 
                     if self.local_ship.health <= 0.0 {
@@ -672,6 +764,7 @@ impl GameClient {
         }
 
         if player_destroyed {
+            audio::play(audio::SFX_EXPLOSION);
             self.spawn_explosion(player_pos, RED, 40);
             self.spawn_explosion(player_pos, ORANGE, 30);
         }
@@ -682,12 +775,14 @@ impl GameClient {
         for dead_id in hit_alien_ids {
             if let Some(pos) = self.aliens.iter().position(|a| a.id == dead_id) {
                 let alien = self.aliens.remove(pos);
+                audio::play(audio::SFX_EXPLOSION);
                 self.spawn_explosion(alien.position, ORANGE, 30);
                 self.spawn_explosion(alien.position, SKYBLUE, 20);
 
                 let xp = alien.alien_type.xp_reward();
                 let credits = alien.alien_type.credits_reward();
                 if self.local_ship.add_xp(xp) {
+                    audio::play(audio::SFX_LEVEL_UP);
                     self.spawn_float_text(
                         format!("⭐ NIVEAU SUPÉRIEUR ! (Lv. {})", self.local_ship.level),
                         self.local_ship.position + Vec2::new(0.0, -45.0),
@@ -726,6 +821,7 @@ impl GameClient {
             loot.lifetime -= dt;
             if loot.position.distance_to(player_pos) < LOOTBOX_RADIUS + SHIP_RADIUS && self.local_ship.is_alive {
                 collected_box_ids.push(loot.id);
+                audio::play(audio::SFX_COLLECT);
                 self.local_ship.credits += loot.credits;
                 self.local_ship.cargo.add_scrap(loot.scrap);
                 if loot.plasma_cores > 0 {
@@ -780,8 +876,9 @@ impl GameClient {
                     self.local_ship.mining_target = None;
                 }
 
-                if spark_needed && get_time() as f32 - self.mining_sound_timer > 0.08 {
+                if spark_needed && get_time() as f32 - self.mining_sound_timer > 0.12 {
                     self.mining_sound_timer = get_time() as f32;
+                    audio::play(audio::SFX_MINING);
                     let spark_pos = player_pos + Vec2::new((get_time() as f32 * 20.0).sin() * 8.0, (get_time() as f32 * 30.0).cos() * 8.0);
                     self.particles.push(Particle {
                         pos: spark_pos,
@@ -796,8 +893,10 @@ impl GameClient {
                 if let Some(m_type) = mineral_completed {
                     let added = self.local_ship.cargo.add_mineral(m_type, 1);
                     if added {
+                        audio::play(audio::SFX_COLLECT);
                         let xp_gain = m_type.value() * 2;
                         if self.local_ship.add_xp(xp_gain) {
+                            audio::play(audio::SFX_LEVEL_UP);
                             self.spawn_float_text(
                                 format!("⭐ NIVEAU {} !", self.local_ship.level),
                                 player_pos + Vec2::new(0.0, -45.0),
@@ -828,6 +927,8 @@ impl GameClient {
         if !self.local_ship.is_alive || self.local_ship.is_in_safe_zone {
             return;
         }
+
+        audio::play(audio::SFX_LASER);
 
         // Auto-aim towards locked target if alive and valid, else ship rotation
         let dir = if let Some(target_id) = self.locked_target_id {
@@ -905,12 +1006,26 @@ async fn main() {
         // Modal toggle shortcuts
         if is_key_pressed(KeyCode::T) {
             game.active_modal = if game.active_modal == ActiveModal::Talents { ActiveModal::None } else { ActiveModal::Talents };
+            audio::play(audio::SFX_UI_CLICK);
         }
         if is_key_pressed(KeyCode::H) || is_key_pressed(KeyCode::B) {
             game.active_modal = if game.active_modal == ActiveModal::Hangar { ActiveModal::None } else { ActiveModal::Hangar };
+            audio::play(audio::SFX_UI_CLICK);
         }
         if is_key_pressed(KeyCode::C) {
             game.active_modal = if game.active_modal == ActiveModal::Crafting { ActiveModal::None } else { ActiveModal::Crafting };
+            audio::play(audio::SFX_UI_CLICK);
+        }
+
+        // Audio Mute toggle shortcut (M)
+        if is_key_pressed(KeyCode::M) {
+            game.is_muted = audio::toggle_mute();
+            let status = if game.is_muted { "🔇 Audio : Désactivé (Muet)" } else { "🔊 Audio : Activé (Sons sci-fi)" };
+            game.spawn_float_text(
+                status.to_string(),
+                game.local_ship.position + Vec2::new(0.0, -35.0),
+                if game.is_muted { mocha::RED } else { mocha::GREEN },
+            );
         }
 
         // Tab Targeting: Select or cycle nearest alien
@@ -935,6 +1050,8 @@ async fn main() {
                     game.locked_target_id = Some(candidates[0].0);
                 }
 
+                audio::play(audio::SFX_TARGET_LOCK);
+
                 if let Some(locked_id) = game.locked_target_id {
                     if let Some(alien) = game.aliens.iter().find(|a| a.id == locked_id) {
                         game.spawn_float_text(
@@ -945,18 +1062,28 @@ async fn main() {
                     }
                 }
             } else {
+                if game.locked_target_id.is_some() {
+                    audio::play(audio::SFX_TARGET_LOST);
+                }
                 game.locked_target_id = None;
             }
         }
 
         if is_key_pressed(KeyCode::Escape) {
-            game.locked_target_id = None;
+            if game.active_modal != ActiveModal::None {
+                game.active_modal = ActiveModal::None;
+                audio::play(audio::SFX_UI_CLICK);
+            } else if game.locked_target_id.is_some() {
+                game.locked_target_id = None;
+                audio::play(audio::SFX_TARGET_LOST);
+            }
         }
 
         // Sell Cargo shortcut at space base
         if is_key_pressed(KeyCode::V) && game.local_ship.is_in_safe_zone {
             let credits = game.local_ship.cargo.sell_all_minerals();
             if credits > 0 {
+                audio::play(audio::SFX_COLLECT);
                 game.local_ship.credits += credits;
                 let pos = game.local_ship.position;
                 game.spawn_float_text(format!("💰 Minerais Vendus : +{} C.", credits), pos + Vec2::new(0.0, -35.0), GOLD);
@@ -1003,6 +1130,7 @@ async fn main() {
                 for alien in &game.aliens {
                     if alien.health > 0.0 && alien.position.distance_to(click_world) < 42.0 {
                         game.locked_target_id = Some(alien.id);
+                        audio::play(audio::SFX_TARGET_LOCK);
                         game.spawn_float_text(
                             format!("🎯 CIBLE: {}", alien.alien_type.name()),
                             alien.position + Vec2::new(0.0, -35.0),
@@ -1024,6 +1152,7 @@ async fn main() {
                         auto_aimed = true;
                     } else {
                         game.locked_target_id = None;
+                        audio::play(audio::SFX_TARGET_LOST);
                     }
                 } else {
                     game.locked_target_id = None;
@@ -1084,6 +1213,7 @@ async fn main() {
             if is_key_pressed(KeyCode::J) {
                 let p_pos = game.local_ship.position;
                 if let Some(portal) = game.portals.iter().find(|p| p.position.distance_to(p_pos) <= p.radius + 20.0) {
+                    audio::play(audio::SFX_WARP);
                     match portal.portal_type {
                         PortalType::MapJump { target_map, target_pos } => {
                             game.current_map = target_map;
@@ -1130,6 +1260,7 @@ async fn main() {
         apply_ship_physics(&mut game.local_ship, move_vec, target_angle, dt);
 
         if respawn {
+            audio::play(audio::SFX_RESPAWN);
             game.local_ship.is_alive = true;
             game.local_ship.position = Vec2::ZERO;
             game.local_ship.velocity = Vec2::ZERO;
@@ -1535,7 +1666,10 @@ async fn main() {
         }
 
         // 14. Top Sci-Fi HUD (Catppuccin Mocha)
-        let hud_w = 840.0_f32.min(screen_width() - 32.0);
+        let (mouse_x, mouse_y) = mouse_position();
+        let mouse_clicked = is_mouse_button_pressed(MouseButton::Left);
+
+        let hud_w = 890.0_f32.min(screen_width() - 32.0);
         let hud_h = 44.0;
         let hud_x = (screen_width() - hud_w) * 0.5;
         let hud_y = 12.0;
@@ -1550,13 +1684,33 @@ async fn main() {
         let cargo_max = game.local_ship.cargo.max_capacity;
         let cargo_col = if game.local_ship.cargo.is_full() { mocha::RED } else { mocha::SAPPHIRE };
         let cargo_str = format!("📦 Soute: {} / {} kg", cargo_used, cargo_max);
-        draw_crisp_text_shadow(custom_font.as_ref(), &cargo_str, hud_x + 200.0, hud_y + 27.0, 16.0, cargo_col);
+        draw_crisp_text_shadow(custom_font.as_ref(), &cargo_str, hud_x + 180.0, hud_y + 27.0, 16.0, cargo_col);
 
         let level_str = format!("⭐ Lv. {} ({} / {} XP)", game.local_ship.level, game.local_ship.xp, game.local_ship.next_level_xp);
-        draw_crisp_text_shadow(custom_font.as_ref(), &level_str, hud_x + 400.0, hud_y + 27.0, 16.0, mocha::GREEN);
+        draw_crisp_text_shadow(custom_font.as_ref(), &level_str, hud_x + 360.0, hud_y + 27.0, 16.0, mocha::GREEN);
 
         let map_str = format!("🌐 {}", game.current_map.name());
-        draw_crisp_text_shadow(custom_font.as_ref(), &map_str, hud_x + 630.0, hud_y + 27.0, 15.0, mocha::LAVENDER);
+        draw_crisp_text_shadow(custom_font.as_ref(), &map_str, hud_x + 550.0, hud_y + 27.0, 15.0, mocha::LAVENDER);
+
+        // Audio Mute Pill Button in Top HUD
+        let mute_btn_w = 98.0;
+        let mute_btn_x = hud_x + hud_w - mute_btn_w - 12.0;
+        let mute_btn_y = hud_y + 8.0;
+        let mute_hover = mouse_x >= mute_btn_x && mouse_x <= mute_btn_x + mute_btn_w && mouse_y >= mute_btn_y && mouse_y <= mute_btn_y + 28.0;
+
+        if mute_hover && mouse_clicked {
+            game.is_muted = audio::toggle_mute();
+            audio::play(audio::SFX_UI_CLICK);
+        }
+
+        let (m_bg, m_border, m_txt, m_label) = if game.is_muted {
+            (mocha::SURFACE0, mocha::RED, mocha::RED, "🔇 MUET [M]")
+        } else {
+            (if mute_hover { mocha::SURFACE1 } else { mocha::SURFACE0 }, if mute_hover { mocha::GREEN } else { mocha::SURFACE2 }, mocha::GREEN, "🔊 SON [M]")
+        };
+        draw_rectangle(mute_btn_x, mute_btn_y, mute_btn_w, 28.0, m_bg);
+        draw_rectangle_lines(mute_btn_x, mute_btn_y, mute_btn_w, 28.0, 1.2, m_border);
+        draw_crisp_text(custom_font.as_ref(), m_label, mute_btn_x + 12.0, mute_btn_y + 19.0, 13.0, m_txt);
 
         // 15. Notification Banner
         if game.notification_timer > 0.0 {
@@ -1660,12 +1814,9 @@ async fn main() {
         draw_crisp_text(custom_font.as_ref(), "• [Z Q S D] Déplacement direct  • [Espace / Clic G] Tirer", q_x + 14.0, q_y + 42.0, 13.0, mocha::TEXT);
         draw_crisp_text(custom_font.as_ref(), "• [TAB] Ciblage auto ennemi proche  • [Échap] Déverrouiller", q_x + 14.0, q_y + 60.0, 13.0, mocha::SAPPHIRE);
         draw_crisp_text(custom_font.as_ref(), "• [E] Laser Minier  • [H] Hangar  • [T] Talents  • [C] Craft  • [V] Vente", q_x + 14.0, q_y + 78.0, 13.0, mocha::PEACH);
-        draw_crisp_text(custom_font.as_ref(), "• [J] Saut Portail / Faille cosmique", q_x + 14.0, q_y + 94.0, 12.0, mocha::TEAL);
+        draw_crisp_text(custom_font.as_ref(), "• [J] Saut Portail  • [M] Muet / Activer le Son", q_x + 14.0, q_y + 94.0, 12.0, mocha::TEAL);
 
         // 18. Modals (Hangar, Talents, Crafting) - Catppuccin Mocha Overhaul
-        let (mouse_x, mouse_y) = mouse_position();
-        let mouse_clicked = is_mouse_button_pressed(MouseButton::Left);
-
         match game.active_modal {
             ActiveModal::Hangar => {
                 // Fullscreen Backdrop Dimming
@@ -1694,6 +1845,7 @@ async fn main() {
                 draw_crisp_text(custom_font.as_ref(), "✕ ÉCHAP", close_btn_x + 18.0, close_btn_y + 18.0, 13.0, mocha::TEXT);
                 if close_hover && mouse_clicked {
                     game.active_modal = ActiveModal::None;
+                    audio::play(audio::SFX_UI_CLICK);
                 }
 
                 let classes = [
@@ -1756,6 +1908,7 @@ async fn main() {
                     draw_crisp_text(custom_font.as_ref(), stats, card_x + 22.0, card_y + 78.0, 13.0, *accent_col);
 
                     if (is_key_pressed(*key) || (is_hovered && mouse_clicked)) && !is_active {
+                        audio::play(audio::SFX_UI_CLICK);
                         game.local_ship.ship_class = *class;
                         game.local_ship.max_health = class.base_health();
                         game.local_ship.health = class.base_health();
@@ -1798,6 +1951,7 @@ async fn main() {
                 draw_crisp_text(custom_font.as_ref(), "✕ ÉCHAP", close_btn_x + 18.0, close_btn_y + 18.0, 13.0, mocha::TEXT);
                 if close_hover && mouse_clicked {
                     game.active_modal = ActiveModal::None;
+                    audio::play(audio::SFX_UI_CLICK);
                 }
 
                 let talents_data = [
@@ -1872,6 +2026,7 @@ async fn main() {
                     }
 
                     if (is_key_pressed(*key) || (is_hovered && mouse_clicked)) && can_upgrade {
+                        audio::play(audio::SFX_UI_CLICK);
                         game.local_ship.talent_points -= 1;
                         match talent_idx {
                             0 => game.local_ship.talents.combat_laser_dmg += 1,
@@ -1916,6 +2071,7 @@ async fn main() {
                 draw_crisp_text(custom_font.as_ref(), "✕ ÉCHAP", close_btn_x + 18.0, close_btn_y + 18.0, 13.0, mocha::TEXT);
                 if close_hover && mouse_clicked {
                     game.active_modal = ActiveModal::None;
+                    audio::play(audio::SFX_UI_CLICK);
                 }
 
                 // Resource Pill Bar
@@ -1982,6 +2138,7 @@ async fn main() {
                     }
 
                     if (is_key_pressed(keys[idx]) || (is_hovered && mouse_clicked)) && can_craft {
+                        audio::play(audio::SFX_CRAFT);
                         game.local_ship.cargo.prometium -= recipe.cost_prometium;
                         game.local_ship.cargo.endurium -= recipe.cost_endurium;
                         game.local_ship.cargo.terbium -= recipe.cost_terbium;
