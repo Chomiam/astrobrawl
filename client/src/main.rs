@@ -588,33 +588,8 @@ impl GameClient {
         });
         self.next_entity_id += 1;
 
-        // 4. Spawning Other Active Pilots in the Sector
+        // Clear players list (only real connected multiplayer players will be shown)
         self.players.clear();
-        let simulated_pilots = [
-            ("[FR] Orion_Hunter", ShipClass::Combat, 7, Vec2::new(340.0, -280.0)),
-            ("NovaMiner_42", ShipClass::Minier, 4, Vec2::new(-450.0, 360.0)),
-            ("AstroCargo_Titan", ShipClass::Transport, 6, Vec2::new(560.0, 500.0)),
-            ("Solaris_Ghost", ShipClass::Exploration, 5, Vec2::new(-580.0, -420.0)),
-            ("Viper_Ace", ShipClass::Combat, 9, Vec2::new(-220.0, 720.0)),
-            ("DeepSpace_Drill", ShipClass::Minier, 3, Vec2::new(680.0, -350.0)),
-            ("Quantum_Ranger", ShipClass::Exploration, 6, Vec2::new(160.0, -820.0)),
-            ("StarLord_FR", ShipClass::Combat, 8, Vec2::new(-720.0, 180.0)),
-        ];
-
-        for (name, class, level, pos) in simulated_pilots {
-            let mut pilot = PlayerShip::new(
-                self.next_entity_id,
-                name.to_string(),
-                class,
-                pos,
-            );
-            pilot.level = level;
-            pilot.credits = level * 1400;
-            pilot.health = pilot.max_health;
-            pilot.shield = pilot.max_shield;
-            self.players.insert(pilot.id, pilot);
-            self.next_entity_id += 1;
-        }
     }
 
     fn try_connect(&mut self, url: &str, token: &str) {
@@ -827,7 +802,6 @@ impl GameClient {
         }
 
         let now = get_time() as f32;
-        let local_id = self.local_player_id;
 
         // --- Continuous Alien Population Replenishment ---
         let streuner_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Streuner).count();
@@ -925,7 +899,7 @@ impl GameClient {
                 alien.rotation = away.y.atan2(away.x);
             }
 
-            // Check nearest target: player (if outside safe station) or other active pilots
+            // Check target: player (if outside safe station)
             let mut nearest_target_pos = None;
             let mut nearest_dist = alien.alien_type.aggro_range();
 
@@ -934,16 +908,6 @@ impl GameClient {
                 if d < nearest_dist {
                     nearest_dist = d;
                     nearest_target_pos = Some(player_pos);
-                }
-            }
-
-            for (pid, p) in &self.players {
-                if *pid != local_id && p.is_alive {
-                    let d = alien.position.distance_to(p.position);
-                    if d < nearest_dist {
-                        nearest_dist = d;
-                        nearest_target_pos = Some(p.position);
-                    }
                 }
             }
 
@@ -980,157 +944,6 @@ impl GameClient {
         }
 
         self.lasers.extend(new_alien_lasers);
-
-        // --- Simulated Other Pilots AI & Actions ---
-        let mut new_pilot_lasers = Vec::new();
-        let mut pilots_to_respawn = Vec::new();
-
-        let alien_targets: Vec<(u64, Vec2)> = self.aliens.iter()
-            .filter(|a| a.health > 0.0)
-            .map(|a| (a.id, a.position))
-            .collect();
-
-        let mineral_targets: Vec<(u64, Vec2)> = self.minerals.iter()
-            .filter(|m| m.health > 0.0)
-            .map(|m| (m.id, m.position))
-            .collect();
-
-        let mut mined_damage: HashMap<u64, f32> = HashMap::new();
-
-        for (pid, pilot) in self.players.iter_mut() {
-            if *pid == local_id {
-                continue;
-            }
-
-            if !pilot.is_alive {
-                pilots_to_respawn.push(*pid);
-                continue;
-            }
-
-            // Passive Shield Regeneration
-            pilot.shield = (pilot.shield + 6.0 * dt).min(pilot.max_shield);
-
-            match pilot.ship_class {
-                ShipClass::Minier => {
-                    if let Some((m_id, m_pos)) = mineral_targets.iter()
-                        .min_by(|a, b| pilot.position.distance_to(a.1).partial_cmp(&pilot.position.distance_to(b.1)).unwrap_or(std::cmp::Ordering::Equal))
-                    {
-                        let d = *m_pos - pilot.position;
-                        let dist = d.length();
-                        pilot.rotation = d.y.atan2(d.x);
-
-                        if dist > 220.0 {
-                            pilot.is_thrusting = true;
-                            pilot.is_mining = false;
-                            pilot.mining_target = None;
-                            let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
-                            pilot.velocity = (pilot.velocity + forward * (pilot.ship_class.base_acceleration() * 0.7 * dt)).clamp_length_max(pilot.ship_class.base_speed());
-                        } else {
-                            pilot.is_thrusting = false;
-                            pilot.is_mining = true;
-                            pilot.mining_target = Some(*m_id);
-                            pilot.velocity *= 0.90;
-                            *mined_damage.entry(*m_id).or_insert(0.0) += 20.0 * dt;
-                        }
-                    } else {
-                        pilot.is_mining = false;
-                        pilot.mining_target = None;
-                        pilot.rotation += 0.2 * dt;
-                        pilot.velocity *= 0.96;
-                    }
-                }
-                ShipClass::Combat => {
-                    // Engage aliens only within local sensor radius (550m) so combat bots don't vacuum entire galaxy
-                    let nearby_alien = alien_targets.iter()
-                        .filter(|(_, a_pos)| pilot.position.distance_to(*a_pos) < 550.0)
-                        .min_by(|a, b| pilot.position.distance_to(a.1).partial_cmp(&pilot.position.distance_to(b.1)).unwrap_or(std::cmp::Ordering::Equal));
-
-                    if let Some((_a_id, a_pos)) = nearby_alien {
-                        let d = *a_pos - pilot.position;
-                        let dist = d.length();
-                        pilot.rotation = d.y.atan2(d.x);
-
-                        if dist > 260.0 {
-                            pilot.is_thrusting = true;
-                            let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
-                            pilot.velocity = (pilot.velocity + forward * (pilot.ship_class.base_acceleration() * 0.75 * dt)).clamp_length_max(pilot.ship_class.base_speed());
-                        } else {
-                            pilot.is_thrusting = false;
-                            pilot.velocity *= 0.92;
-                        }
-
-                        // Fire lasers at alien with balanced damage
-                        if dist < 420.0 && (now - pilot.id as f32 * 0.25) % 1.1 < dt {
-                            let laser_dir = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
-                            new_pilot_lasers.push(Laser {
-                                id: self.next_entity_id,
-                                shooter_id: pilot.id,
-                                is_alien: false,
-                                position: pilot.position + laser_dir * 22.0,
-                                velocity: laser_dir * LASER_SPEED,
-                                lifetime: LASER_LIFETIME,
-                                damage: pilot.ship_class.base_laser_damage() * 0.50,
-                                color_rgba: [0.2, 0.75, 1.0, 1.0],
-                            });
-                            self.next_entity_id += 1;
-                        }
-                    } else {
-                        // Patrol wander
-                        pilot.is_thrusting = true;
-                        pilot.rotation += ((pilot.id as f32) * 0.3 + now * 0.2).sin() * 0.6 * dt;
-                        let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
-                        pilot.velocity = (pilot.velocity + forward * (120.0 * dt)).clamp_length_max(180.0);
-                    }
-                }
-                ShipClass::Transport => {
-                    pilot.rotation += (now * 0.15 + (pilot.id as f32)).sin() * 0.3 * dt;
-                    let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
-                    pilot.is_thrusting = true;
-                    pilot.velocity = (pilot.velocity + forward * (70.0 * dt)).clamp_length_max(130.0);
-                }
-                ShipClass::Exploration => {
-                    pilot.rotation += ((pilot.id as f32) * 0.4 + now * 0.3).cos() * 0.9 * dt;
-                    let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
-                    pilot.is_thrusting = true;
-                    pilot.velocity = (pilot.velocity + forward * (220.0 * dt)).clamp_length_max(300.0);
-                }
-            }
-
-            pilot.position += pilot.velocity * dt;
-
-            // Keep simulated pilots inside galaxy boundaries
-            if pilot.position.length() > 1420.0 {
-                let to_center = -pilot.position.normalize();
-                pilot.rotation = to_center.y.atan2(to_center.x);
-            }
-        }
-
-        // Apply mining damage from other pilots
-        for (m_id, dmg) in mined_damage {
-            if let Some(m) = self.minerals.iter_mut().find(|m| m.id == m_id) {
-                m.health -= dmg;
-                if m.health <= 0.0 {
-                    m.health = m.max_health;
-                }
-            }
-        }
-
-        // Respawn destroyed pilots
-        for pid in pilots_to_respawn {
-            if let Some(pilot) = self.players.get_mut(&pid) {
-                let angle = (pid as f32 * 45.0 + now).sin() * std::f32::consts::TAU;
-                let dist = 320.0 + ((pid as f32 * 17.0).sin().abs()) * 380.0;
-                pilot.position = Vec2::new(angle.cos() * dist, angle.sin() * dist);
-                pilot.velocity = Vec2::ZERO;
-                pilot.health = pilot.max_health;
-                pilot.shield = pilot.max_shield;
-                pilot.is_alive = true;
-                pilot.is_mining = false;
-                pilot.mining_target = None;
-            }
-        }
-
-        self.lasers.extend(new_pilot_lasers);
 
         // Update Lasers
         for laser in &mut self.lasers {
