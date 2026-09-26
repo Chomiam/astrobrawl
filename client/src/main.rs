@@ -164,6 +164,8 @@ pub mod storage {
         pub fn mq_save_progression(ptr: *const u8, len: usize);
         pub fn mq_load_progression(dest_ptr: *mut u8, max_len: usize) -> i32;
         pub fn mq_get_player_name(dest_ptr: *mut u8, max_len: usize) -> i32;
+        pub fn mq_get_server_url(dest_ptr: *mut u8, max_len: usize) -> i32;
+        pub fn mq_get_auth_token(dest_ptr: *mut u8, max_len: usize) -> i32;
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -195,6 +197,38 @@ pub mod storage {
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_server_url() -> String {
+        let mut buf = vec![0u8; 512];
+        let len = unsafe { mq_get_server_url(buf.as_mut_ptr(), buf.len()) };
+        if len > 0 {
+            buf.truncate(len as usize);
+            if let Ok(s) = String::from_utf8(buf) {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+        "ws://localhost:3000/ws".to_string()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_auth_token() -> String {
+        let mut buf = vec![0u8; 512];
+        let len = unsafe { mq_get_auth_token(buf.as_mut_ptr(), buf.len()) };
+        if len > 0 {
+            buf.truncate(len as usize);
+            if let Ok(s) = String::from_utf8(buf) {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+        "guest".to_string()
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn save(_bytes: &[u8]) {}
 
@@ -206,6 +240,16 @@ pub mod storage {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn get_player_name() -> String {
         "Chomiam".to_string()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_server_url() -> String {
+        "ws://localhost:3000/ws".to_string()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_auth_token() -> String {
+        "guest".to_string()
     }
 }
 
@@ -285,6 +329,7 @@ struct GameClient {
     camera_pos: Vec2,
     locked_target_id: Option<u64>,
     last_ping_send: f64,
+    last_reconnect_attempt: f64,
     ping_ms: u64,
     active_modal: ActiveModal,
     notification_text: String,
@@ -338,7 +383,7 @@ impl GameClient {
             current_map: MapId::Map1_1,
             connected: false,
             connecting: false,
-            status_text: "Mode Solo / Simulation Active".to_string(),
+            status_text: "Recherche du serveur spatial...".to_string(),
 
             players: HashMap::new(),
             aliens: Vec::new(),
@@ -355,6 +400,7 @@ impl GameClient {
             camera_pos: Vec2::ZERO,
             locked_target_id: None,
             last_ping_send: 0.0,
+            last_reconnect_attempt: 0.0,
             ping_ms: 0,
             active_modal: ActiveModal::None,
             notification_text: "Bienvenue dans AstroBrawl ! Rejoignez la base spatiale au centre.".to_string(),
@@ -549,11 +595,10 @@ impl GameClient {
         self.connecting = true;
         self.status_text = format!("Connexion à {}...", url);
 
-        let full_url = if token.is_empty() || token == "guest" {
-            format!("{url}?token=guest")
-        } else {
-            format!("{url}?token={token}")
-        };
+        let username = storage::get_player_name();
+        let safe_username: String = username.chars().filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-').collect();
+        let tok = if token.is_empty() { "guest" } else { token };
+        let full_url = format!("{url}?token={tok}&username={safe_username}");
 
         net::connect(&full_url);
     }
@@ -567,16 +612,34 @@ impl GameClient {
     }
 
     fn poll_network(&mut self) {
-        if !self.connected && net::is_connected() {
+        let is_connected_now = net::is_connected();
+
+        if !self.connected && is_connected_now {
             self.connected = true;
             self.connecting = false;
             self.is_offline_sim = false;
-            self.status_text = "Connecté au serveur spatial multijoueur".to_string();
+            self.status_text = "Connecté au serveur spatial multijoueur (SYNC TEMPS RÉEL)".to_string();
 
+            let token = storage::get_auth_token();
             let auth_msg = ClientMessage::Auth {
-                token: "guest".to_string(),
+                token,
             };
             self.send_message(&auth_msg);
+        } else if self.connected && !is_connected_now {
+            // Disconnected from server
+            self.connected = false;
+            self.connecting = false;
+            self.is_offline_sim = true;
+            self.status_text = "Déconnecté du serveur... reconnexion automatique en cours".to_string();
+        }
+
+        // Automatic Reconnection loop: retry every 1.5 seconds if disconnected
+        let now = macroquad::time::get_time();
+        if !self.connected && (now - self.last_reconnect_attempt > 1.5) {
+            self.last_reconnect_attempt = now;
+            let url = storage::get_server_url();
+            let token = storage::get_auth_token();
+            self.try_connect(&url, &token);
         }
 
         while let Some(bytes) = net::try_recv() {
@@ -598,7 +661,9 @@ impl GameClient {
                 self.local_ship = ship;
                 self.current_map = current_map;
                 self.camera_pos = self.local_ship.position;
-                self.status_text = format!("Pilote: {}", username);
+                self.connected = true;
+                self.is_offline_sim = false;
+                self.status_text = format!("Pilote: {} (En Ligne)", username);
                 self.show_notification(
                     "Connexion Établie",
                     &format!("Bienvenue commandant {}", username),
@@ -610,6 +675,9 @@ impl GameClient {
                 self.is_offline_sim = true;
             }
             ServerMessage::WorldSnapshot(snapshot) => {
+                self.connected = true;
+                self.is_offline_sim = false;
+
                 if let Some(p) = snapshot.players.iter().find(|p| p.id == self.local_player_id) {
                     if self.local_ship.is_alive && !p.is_alive {
                         audio::play(audio::SFX_EXPLOSION);
@@ -641,12 +709,30 @@ impl GameClient {
                 self.loot_boxes = snapshot.loot_boxes;
                 self.portals = snapshot.portals;
 
+                let mut current_ids = std::collections::HashSet::new();
                 for p in snapshot.players {
+                    current_ids.insert(p.id);
                     if p.id == self.local_player_id {
-                        self.local_ship = p.clone();
+                        self.local_ship.health = p.health;
+                        self.local_ship.max_health = p.max_health;
+                        self.local_ship.shield = p.shield;
+                        self.local_ship.max_shield = p.max_shield;
+                        self.local_ship.credits = p.credits;
+                        self.local_ship.score = p.score;
+                        self.local_ship.level = p.level;
+                        self.local_ship.xp = p.xp;
+                        self.local_ship.cargo = p.cargo.clone();
+                        self.local_ship.is_alive = p.is_alive;
+                        self.local_ship.is_in_safe_zone = p.is_in_safe_zone;
+                        if self.local_ship.position.distance_to(p.position) > 100.0 {
+                            self.local_ship.position = p.position;
+                            self.local_ship.velocity = p.velocity;
+                        }
                     }
                     self.players.insert(p.id, p);
                 }
+                // Purge disconnected players
+                self.players.retain(|id, _| current_ids.contains(id));
             }
             ServerMessage::PlayerKilled { victim_id, .. } => {
                 if victim_id == self.local_player_id {
@@ -1195,9 +1281,10 @@ async fn main() {
 
     let mut game = GameClient::new();
 
-    // Try connecting to backend WSS if available
-    let default_server_url = "ws://localhost:3000/ws";
-    game.try_connect(default_server_url, "guest");
+    // Connect to server using dynamic configured URL from HTML/localStorage
+    let server_url = storage::get_server_url();
+    let token = storage::get_auth_token();
+    game.try_connect(&server_url, &token);
 
     let mut last_shot_time = 0.0f32;
 
@@ -2027,6 +2114,20 @@ async fn main() {
 
         let map_str = format!("🌐 {}", game.current_map.name());
         draw_crisp_text_shadow(custom_font.as_ref(), &map_str, cur_x, hud_y + 27.0, 14.0, mocha::LAVENDER);
+        cur_x += 140.0;
+
+        let conn_str = if game.connected {
+            let other_count = game.players.len().saturating_sub(1);
+            if other_count > 0 {
+                format!("🟢 SERVEUR SYNC ({} pilotes)", other_count + 1)
+            } else {
+                "🟢 SERVEUR SYNC".to_string()
+            }
+        } else {
+            "🔴 HORS LIGNE (Reconnexion...)".to_string()
+        };
+        let conn_col = if game.connected { mocha::GREEN } else { mocha::PEACH };
+        draw_crisp_text_shadow(custom_font.as_ref(), &conn_str, cur_x, hud_y + 27.0, 13.0, conn_col);
 
         // Audio Mute Pill Button in Top HUD
         let mute_btn_w = 98.0;

@@ -36,6 +36,8 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
 
     // Authenticate player via query parameter token or fallback to guest
     let token = params.get("token").cloned().unwrap_or_default();
+    let query_username = params.get("username").cloned().unwrap_or_default();
+
     let (player_id, username, player_rec) = if !token.is_empty() && token != "guest" && token != "guest_offline" {
         match verify_jwt(&token, &state.jwt_secret) {
             Ok(claims) => {
@@ -44,7 +46,7 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
                     Ok(Some(rec)) => (rec.id, rec.username.clone(), rec),
                     _ => {
                         let guest_uuid = uuid_simple();
-                        let guest_name = format!("Pilote-{}", &guest_uuid[..4]);
+                        let guest_name = if !query_username.is_empty() { query_username } else { format!("Pilote-{}", &guest_uuid[..4]) };
                         let rec = get_or_create_guest_player(&state.db_pool, &guest_uuid, &guest_name)
                             .unwrap();
                         (rec.id, rec.username.clone(), rec)
@@ -53,7 +55,7 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
             }
             Err(_) => {
                 let guest_uuid = uuid_simple();
-                let guest_name = format!("Pilote-{}", &guest_uuid[..4]);
+                let guest_name = if !query_username.is_empty() { query_username } else { format!("Pilote-{}", &guest_uuid[..4]) };
                 let rec = get_or_create_guest_player(&state.db_pool, &guest_uuid, &guest_name)
                     .unwrap();
                 (rec.id, rec.username.clone(), rec)
@@ -61,7 +63,7 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
         }
     } else {
         let guest_uuid = uuid_simple();
-        let guest_name = format!("Pilote-{}", &guest_uuid[..4]);
+        let guest_name = if !query_username.is_empty() { query_username } else { format!("Pilote-{}", &guest_uuid[..4]) };
         let rec = get_or_create_guest_player(&state.db_pool, &guest_uuid, &guest_name)
             .unwrap();
         (rec.id, rec.username.clone(), rec)
@@ -75,10 +77,11 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
 
-    {
+    let initial_snapshot = {
         let mut world = state.world.write().await;
         world.add_player(ship.clone(), tx.clone());
-    }
+        world.create_snapshot()
+    };
 
     let auth_ok = ServerMessage::AuthSuccess {
         player_id,
@@ -87,6 +90,12 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
         current_map: MapId::Map1_1,
     };
     if let Ok(bytes) = serialize_packet(&auth_ok) {
+        let _ = ws_sender.send(Message::Binary(bytes.into())).await;
+    }
+
+    // Send immediate snapshot so client is fully synchronized with 0 latency
+    let snap_msg = ServerMessage::WorldSnapshot(initial_snapshot);
+    if let Ok(bytes) = serialize_packet(&snap_msg) {
         let _ = ws_sender.send(Message::Binary(bytes.into())).await;
     }
 

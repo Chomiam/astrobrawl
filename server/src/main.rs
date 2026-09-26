@@ -63,14 +63,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = Router::new()
-        .route("/health", get(health_check))
-        .route("/api/auth/github", get(github_login_redirect))
-        .route("/api/auth/github/callback", get(github_callback))
-        .route("/api/auth/guest", post(guest_login))
-        .route("/ws", get(ws::ws_handler))
-        .layer(cors)
-        .with_state(state);
+    let dist_dir = std::path::Path::new("client/dist");
+    let app = if dist_dir.exists() {
+        info!("📂 Distribution Web WASM trouvée dans client/dist, servie sur http://0.0.0.0:3000");
+        Router::new()
+            .route("/health", get(health_check))
+            .route("/api/auth/github", get(github_login_redirect))
+            .route("/api/auth/github/callback", get(github_callback))
+            .route("/api/auth/guest", post(guest_login))
+            .route("/ws", get(ws::ws_handler))
+            .fallback_service(tower_http::services::ServeDir::new("client/dist"))
+            .layer(cors)
+            .with_state(state)
+    } else {
+        Router::new()
+            .route("/health", get(health_check))
+            .route("/api/auth/github", get(github_login_redirect))
+            .route("/api/auth/github/callback", get(github_callback))
+            .route("/api/auth/guest", post(guest_login))
+            .route("/ws", get(ws::ws_handler))
+            .layer(cors)
+            .with_state(state)
+    };
 
     let port: u16 = std::env::var("PORT")
         .ok()

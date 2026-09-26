@@ -699,8 +699,8 @@ impl GameWorld {
         self.broadcast_snapshot();
     }
 
-    pub fn broadcast_snapshot(&self) {
-        let snapshot = WorldSnapshot {
+    pub fn create_snapshot(&self) -> WorldSnapshot {
+        WorldSnapshot {
             tick: self.tick,
             server_time_ms: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -713,8 +713,11 @@ impl GameWorld {
             minerals: self.minerals.clone(),
             loot_boxes: self.loot_boxes.clone(),
             portals: self.portals.clone(),
-        };
+        }
+    }
 
+    pub fn broadcast_snapshot(&self) {
+        let snapshot = self.create_snapshot();
         let msg = ServerMessage::WorldSnapshot(snapshot);
         if let Ok(bytes) = serialize_packet(&msg) {
             for player in self.players.values() {
