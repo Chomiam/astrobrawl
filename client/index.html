@@ -276,8 +276,9 @@
                 </div>
 
                 <div class="input-group">
-                    <label for="server-url">URL du Serveur Multijoueur :</label>
+                    <label for="server-url">🌐 URL du Serveur Multijoueur :</label>
                     <input type="text" id="server-url" class="input-field" value="" placeholder="ws://localhost:3000/ws">
+                    <div id="server-notice" style="font-size: 11px; color: var(--ctp-subtext0); margin-top: 6px; line-height: 1.3;"></div>
                 </div>
             </div>
         </div>
@@ -323,14 +324,28 @@
         });
 
         // Server URL configuration
-        const defaultWsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + 
-                             (window.location.hostname === 'localhost' ? 'localhost:3000' : window.location.host) + '/ws';
+        const isHttps = window.location.protocol === 'https:';
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const defaultWsUrl = isLocal ? 'ws://localhost:3000/ws' : ((isHttps ? 'wss://' : 'ws://') + window.location.host + '/ws');
         
         const serverInput = document.getElementById('server-url');
+        const serverNotice = document.getElementById('server-notice');
+
         serverInput.value = localStorage.getItem('astrobrawl_server_url') || defaultWsUrl;
 
+        if (serverNotice) {
+            if (isHttps && !isLocal) {
+                serverNotice.innerHTML = `⚠️ <b style="color:var(--ctp-peach);">Sur Vercel (HTTPS)</b> : Pour synchroniser avec un serveur distant, renseignez une URL sécurisée (ex: <code>wss://...</code>) ou testez en direct sur <a href="http://localhost:3000" target="_blank" style="color:var(--ctp-sapphire); text-decoration:underline;">http://localhost:3000</a>.`;
+            } else {
+                serverNotice.innerHTML = `✅ <span style="color:var(--ctp-green);">Connexion Locale Détectée</span> : synchronisation temps réel sur <code>ws://localhost:3000/ws</code>.`;
+            }
+        }
+
+        serverInput.addEventListener('input', () => {
+            localStorage.setItem('astrobrawl_server_url', serverInput.value.trim());
+        });
         serverInput.addEventListener('change', () => {
-            localStorage.setItem('astrobrawl_server_url', serverInput.value);
+            localStorage.setItem('astrobrawl_server_url', serverInput.value.trim());
         });
 
         // Check URL search parameters for OAuth callback token
