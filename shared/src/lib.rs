@@ -730,6 +730,7 @@ pub enum ClientMessage {
     Input {
         thrust: bool,
         target_angle: f32,
+        move_vec: Vec2,
     },
     Shoot,
     StartMining { mineral_id: u64 },
@@ -790,7 +791,7 @@ pub fn deserialize_packet<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Resul
 }
 
 // --- Inertial Physics Calculation ---
-pub fn apply_ship_physics(ship: &mut PlayerShip, thrust: bool, target_angle: f32, dt: f32) {
+pub fn apply_ship_physics(ship: &mut PlayerShip, move_vec: Vec2, target_angle: f32, dt: f32) {
     if !ship.is_alive {
         ship.velocity = Vec2::ZERO;
         ship.is_thrusting = false;
@@ -812,9 +813,11 @@ pub fn apply_ship_physics(ship: &mut PlayerShip, thrust: bool, target_angle: f32
         ship.rotation += diff.signum() * max_rot_step;
     }
 
-    ship.is_thrusting = thrust;
-    if thrust {
-        let thrust_dir = Vec2::new(ship.rotation.cos(), ship.rotation.sin());
+    let is_moving = move_vec.length_squared() > 0.001;
+    ship.is_thrusting = is_moving;
+
+    if is_moving {
+        let thrust_dir = move_vec.normalize();
         let accel = ship.ship_class.base_acceleration();
         ship.velocity += thrust_dir * (accel * dt);
 

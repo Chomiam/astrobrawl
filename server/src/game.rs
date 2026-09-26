@@ -10,6 +10,7 @@ pub struct ConnectedPlayer {
     pub tx: mpsc::UnboundedSender<Vec<u8>>,
     pub last_shot_time: f32,
     pub input_thrust: bool,
+    pub input_move_vec: Vec2,
     pub input_target_angle: f32,
     pub respawn_timer: f32,
 }
@@ -185,6 +186,7 @@ impl GameWorld {
                 tx,
                 last_shot_time: 0.0,
                 input_thrust: false,
+                input_move_vec: Vec2::ZERO,
                 input_target_angle: 0.0,
                 respawn_timer: 0.0,
             },
@@ -209,9 +211,10 @@ impl GameWorld {
         }
     }
 
-    pub fn handle_input(&mut self, player_id: PlayerId, thrust: bool, target_angle: f32) {
+    pub fn handle_input(&mut self, player_id: PlayerId, thrust: bool, move_vec: Vec2, target_angle: f32) {
         if let Some(p) = self.players.get_mut(&player_id) {
             p.input_thrust = thrust;
+            p.input_move_vec = move_vec;
             p.input_target_angle = target_angle;
         }
     }
@@ -333,7 +336,7 @@ impl GameWorld {
             if player.ship.is_alive {
                 apply_ship_physics(
                     &mut player.ship,
-                    player.input_thrust,
+                    player.input_move_vec,
                     player.input_target_angle,
                     TICK_DT,
                 );

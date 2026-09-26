@@ -109,9 +109,10 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
                             ClientMessage::Input {
                                 thrust,
                                 target_angle,
+                                move_vec,
                             } => {
                                 let mut world = world_clone.write().await;
-                                world.handle_input(player_id, thrust, target_angle);
+                                world.handle_input(player_id, thrust, move_vec, target_angle);
                             }
                             ClientMessage::Shoot => {
                                 let mut world = world_clone.write().await;

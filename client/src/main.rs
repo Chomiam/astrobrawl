@@ -111,6 +111,7 @@ struct GameClient {
 
     // Camera & UI
     camera_pos: Vec2,
+    locked_target_id: Option<u64>,
     last_ping_send: f64,
     ping_ms: u64,
     active_modal: ActiveModal,
@@ -177,6 +178,7 @@ impl GameClient {
             mining_sound_timer: 0.0,
 
             camera_pos: Vec2::ZERO,
+            locked_target_id: None,
             last_ping_send: 0.0,
             ping_ms: 0,
             active_modal: ActiveModal::None,
@@ -766,7 +768,17 @@ impl GameClient {
             return;
         }
 
-        let dir = Vec2::new(self.local_ship.rotation.cos(), self.local_ship.rotation.sin());
+        // Auto-aim towards locked target if alive and valid, else ship rotation
+        let dir = if let Some(target_id) = self.locked_target_id {
+            if let Some(target) = self.aliens.iter().find(|a| a.id == target_id && a.health > 0.0) {
+                (target.position - self.local_ship.position).normalize()
+            } else {
+                Vec2::new(self.local_ship.rotation.cos(), self.local_ship.rotation.sin())
+            }
+        } else {
+            Vec2::new(self.local_ship.rotation.cos(), self.local_ship.rotation.sin())
+        };
+
         let spawn_pos = self.local_ship.position + dir * (SHIP_RADIUS + 4.0);
 
         let talent_dmg_bonus = 1.0 + (self.local_ship.talents.combat_laser_dmg as f32 * 0.06);
@@ -821,7 +833,7 @@ async fn main() {
         }
 
         // --- Controls & Inputs ---
-        let mut thrust = false;
+        let mut move_vec = Vec2::ZERO;
         let mut target_angle = game.local_ship.rotation;
         let mut shoot = false;
         let mut respawn = false;
@@ -837,6 +849,46 @@ async fn main() {
             game.active_modal = if game.active_modal == ActiveModal::Crafting { ActiveModal::None } else { ActiveModal::Crafting };
         }
 
+        // Tab Targeting: Select or cycle nearest alien
+        if is_key_pressed(KeyCode::Tab) {
+            let p_pos = game.local_ship.position;
+            let mut candidates: Vec<(u64, f32)> = game.aliens.iter()
+                .filter(|a| a.health > 0.0)
+                .map(|a| (a.id, p_pos.distance_to(a.position)))
+                .filter(|(_, d)| *d < 1250.0)
+                .collect();
+            candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            if !candidates.is_empty() {
+                if let Some(cur_id) = game.locked_target_id {
+                    if let Some(pos) = candidates.iter().position(|(id, _)| *id == cur_id) {
+                        let next_idx = (pos + 1) % candidates.len();
+                        game.locked_target_id = Some(candidates[next_idx].0);
+                    } else {
+                        game.locked_target_id = Some(candidates[0].0);
+                    }
+                } else {
+                    game.locked_target_id = Some(candidates[0].0);
+                }
+
+                if let Some(locked_id) = game.locked_target_id {
+                    if let Some(alien) = game.aliens.iter().find(|a| a.id == locked_id) {
+                        game.spawn_float_text(
+                            format!("🎯 CIBLE: {}", alien.alien_type.name()),
+                            game.local_ship.position + Vec2::new(0.0, -42.0),
+                            GOLD,
+                        );
+                    }
+                }
+            } else {
+                game.locked_target_id = None;
+            }
+        }
+
+        if is_key_pressed(KeyCode::Escape) {
+            game.locked_target_id = None;
+        }
+
         // Sell Cargo shortcut at space base
         if is_key_pressed(KeyCode::V) && game.local_ship.is_in_safe_zone {
             let credits = game.local_ship.cargo.sell_all_minerals();
@@ -849,17 +901,79 @@ async fn main() {
         }
 
         if game.local_ship.is_alive && game.active_modal == ActiveModal::None {
-            thrust = is_key_down(KeyCode::W)
-                || is_key_down(KeyCode::Z)
-                || is_key_down(KeyCode::Up)
-                || (is_mouse_button_down(MouseButton::Right) && !is_key_down(KeyCode::LeftShift));
+            // 8-Directional ZQSD Movement (NO SHIFT REQUIRED!)
+            // Z / W / Up = Forward/Up
+            if is_key_down(KeyCode::Z) || is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
+                move_vec.y -= 1.0;
+            }
+            // S / Down = Backward/Down
+            if is_key_down(KeyCode::S) || is_key_down(KeyCode::Down) {
+                move_vec.y += 1.0;
+            }
+            // Q / A / Left = Left
+            if is_key_down(KeyCode::Q) || is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
+                move_vec.x -= 1.0;
+            }
+            // D / Right = Right
+            if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
+                move_vec.x += 1.0;
+            }
 
-            let (mx, my) = mouse_position();
-            let screen_center = Vec2::new(screen_width() * 0.5, screen_height() * 0.5);
-            let mouse_dir = Vec2::new(mx - screen_center.x, my - screen_center.y);
-            target_angle = mouse_dir.y.atan2(mouse_dir.x);
+            // Right click = fly towards mouse directly (no shift key!)
+            if is_mouse_button_down(MouseButton::Right) {
+                let (mx, my) = mouse_position();
+                let screen_center = Vec2::new(screen_width() * 0.5, screen_height() * 0.5);
+                let mouse_dir = Vec2::new(mx - screen_center.x, my - screen_center.y);
+                if mouse_dir.length_squared() > 100.0 {
+                    move_vec += mouse_dir.normalize();
+                }
+            }
 
-            // Laser Fire
+            // Click directly on an alien to lock target
+            if is_mouse_button_pressed(MouseButton::Left) {
+                let (mx, my) = mouse_position();
+                let click_world = Vec2::new(
+                    mx - screen_width() * 0.5 + game.camera_pos.x,
+                    my - screen_height() * 0.5 + game.camera_pos.y,
+                );
+                for alien in &game.aliens {
+                    if alien.health > 0.0 && alien.position.distance_to(click_world) < 42.0 {
+                        game.locked_target_id = Some(alien.id);
+                        game.spawn_float_text(
+                            format!("🎯 CIBLE: {}", alien.alien_type.name()),
+                            alien.position + Vec2::new(0.0, -35.0),
+                            GOLD,
+                        );
+                        break;
+                    }
+                }
+            }
+
+            // Auto-Aiming: Face locked target if present, else face mouse
+            let mut auto_aimed = false;
+            if let Some(target_id) = game.locked_target_id {
+                if let Some(alien) = game.aliens.iter().find(|a| a.id == target_id && a.health > 0.0) {
+                    let dist = game.local_ship.position.distance_to(alien.position);
+                    if dist < 1400.0 {
+                        let aim_dir = (alien.position - game.local_ship.position).normalize();
+                        target_angle = aim_dir.y.atan2(aim_dir.x);
+                        auto_aimed = true;
+                    } else {
+                        game.locked_target_id = None;
+                    }
+                } else {
+                    game.locked_target_id = None;
+                }
+            }
+
+            if !auto_aimed {
+                let (mx, my) = mouse_position();
+                let screen_center = Vec2::new(screen_width() * 0.5, screen_height() * 0.5);
+                let mouse_dir = Vec2::new(mx - screen_center.x, my - screen_center.y);
+                target_angle = mouse_dir.y.atan2(mouse_dir.x);
+            }
+
+            // Laser Fire (Left Click or Space)
             let talent_rate_bonus = 1.0 + (game.local_ship.talents.combat_fire_rate as f32 * 0.05);
             let cooldown = game.local_ship.ship_class.laser_cooldown() / talent_rate_bonus;
             if (is_mouse_button_down(MouseButton::Left) || is_key_down(KeyCode::Space)) && now - last_shot_time >= cooldown {
@@ -867,8 +981,8 @@ async fn main() {
                 last_shot_time = now;
             }
 
-            // Mining Laser Action (Press E or hold when targeting a mineral)
-            if is_key_down(KeyCode::E) || (is_mouse_button_down(MouseButton::Right) && is_key_down(KeyCode::LeftShift)) {
+            // Mining Laser Action (Press or hold E - NO SHIFT REQUIRED!)
+            if is_key_down(KeyCode::E) {
                 if game.local_ship.ship_class.can_mine() {
                     let p_pos = game.local_ship.position;
                     let mut closest_dist = MINING_RANGE;
@@ -920,8 +1034,10 @@ async fn main() {
             }
 
             // Thruster particle trail
-            if thrust {
-                let back_dir = Vec2::new(-game.local_ship.rotation.cos(), -game.local_ship.rotation.sin());
+            let is_moving = move_vec.length_squared() > 0.001;
+            if is_moving {
+                let thrust_dir = move_vec.normalize();
+                let back_dir = Vec2::new(-thrust_dir.x, -thrust_dir.y);
                 let exhaust_pos = game.local_ship.position + back_dir * (SHIP_RADIUS + 4.0);
 
                 let thrust_col = match game.local_ship.ship_class {
@@ -946,8 +1062,8 @@ async fn main() {
             }
         }
 
-        // Apply physics locally
-        apply_ship_physics(&mut game.local_ship, thrust, target_angle, dt);
+        // Apply physics locally with 8-directional move_vec
+        apply_ship_physics(&mut game.local_ship, move_vec, target_angle, dt);
 
         if respawn {
             game.local_ship.is_alive = true;
@@ -967,8 +1083,9 @@ async fn main() {
             game.update_offline_sim(dt);
         } else {
             let input_msg = ClientMessage::Input {
-                thrust,
+                thrust: move_vec.length_squared() > 0.001,
                 target_angle,
+                move_vec,
             };
             game.send_message(&input_msg);
         }
@@ -1190,6 +1307,32 @@ async fn main() {
             let a_name = alien.alien_type.name();
             let an_w = measure_text(a_name, None, 12, 1.0).width;
             draw_text(a_name, ax - an_w * 0.5, ay - side_len - 18.0, 12.0, WHITE);
+
+            // Draw Dark Orbit Target Lock Reticle
+            if game.locked_target_id == Some(alien.id) {
+                let box_size = side_len * 2.5 + ((now * 8.0).sin() * 2.0);
+                let half_b = box_size * 0.5;
+                let bracket_len = 10.0;
+                let target_col = Color::new(1.0, 0.25, 0.25, 0.95);
+
+                // 4 Corner Brackets
+                draw_line(ax - half_b, ay - half_b, ax - half_b + bracket_len, ay - half_b, 2.5, target_col);
+                draw_line(ax - half_b, ay - half_b, ax - half_b, ay - half_b + bracket_len, 2.5, target_col);
+
+                draw_line(ax + half_b, ay - half_b, ax + half_b - bracket_len, ay - half_b, 2.5, target_col);
+                draw_line(ax + half_b, ay - half_b, ax + half_b, ay - half_b + bracket_len, 2.5, target_col);
+
+                draw_line(ax - half_b, ay + half_b, ax - half_b + bracket_len, ay + half_b, 2.5, target_col);
+                draw_line(ax - half_b, ay + half_b, ax - half_b, ay + half_b - bracket_len, 2.5, target_col);
+
+                draw_line(ax + half_b, ay + half_b, ax + half_b - bracket_len, ay + half_b, 2.5, target_col);
+                draw_line(ax + half_b, ay + half_b, ax + half_b, ay + half_b - bracket_len, 2.5, target_col);
+
+                let dist_m = (game.local_ship.position.distance_to(alien.position)) as u32;
+                let lock_str = format!("🎯 CIBLE: {}m", dist_m);
+                let lw = measure_text(&lock_str, None, 12, 1.0).width;
+                draw_text(&lock_str, ax - lw * 0.5, ay + half_b + 16.0, 12.0, GOLD);
+            }
         }
 
         // 11. Other Multiplayer Players
@@ -1328,6 +1471,30 @@ async fn main() {
             draw_text(&game.notification_text, nx + 20.0, 84.0, 14.0, WHITE);
         }
 
+        // Target Info Box in HUD
+        if let Some(target_id) = game.locked_target_id {
+            if let Some(alien) = game.aliens.iter().find(|a| a.id == target_id && a.health > 0.0) {
+                let tw = 250.0;
+                let th = 56.0;
+                let tx = screen_width() - tw - 20.0;
+                let ty = 66.0;
+
+                draw_rectangle(tx, ty, tw, th, Color::new(0.05, 0.08, 0.16, 0.92));
+                draw_rectangle_lines(tx, ty, tw, th, 1.5, RED);
+
+                let dist_m = game.local_ship.position.distance_to(alien.position) as u32;
+                draw_text(&format!("🎯 {} ({}m)", alien.alien_type.name(), dist_m), tx + 10.0, ty + 18.0, 13.0, GOLD);
+
+                let hp_p = (alien.health / alien.max_health).clamp(0.0, 1.0);
+                draw_rectangle(tx + 10.0, ty + 24.0, 230.0, 8.0, DARKGRAY);
+                draw_rectangle(tx + 10.0, ty + 24.0, 230.0 * hp_p, 8.0, RED);
+
+                let sh_p = (alien.shield / alien.max_shield).clamp(0.0, 1.0);
+                draw_rectangle(tx + 10.0, ty + 36.0, 230.0, 6.0, Color::new(0.0, 0.2, 0.4, 0.8));
+                draw_rectangle(tx + 10.0, ty + 36.0, 230.0 * sh_p, 6.0, SKYBLUE);
+            }
+        }
+
         // 16. Radar Minimap
         let radar_size = 145.0;
         let rx = screen_width() - radar_size - 18.0;
@@ -1355,6 +1522,11 @@ async fn main() {
                 let ax = radar_center.x + a.position.x * radar_scale;
                 let ay = radar_center.y + a.position.y * radar_scale;
                 draw_circle(ax, ay, 2.0, RED);
+
+                if game.locked_target_id == Some(a.id) {
+                    let ring_pulse = ((now * 10.0).sin() * 2.0 + 5.0).abs();
+                    draw_circle_lines(ax, ay, ring_pulse, 1.5, GOLD);
+                }
             }
         }
 
@@ -1375,13 +1547,13 @@ async fn main() {
         draw_line(radar_center.x, radar_center.y, radar_center.x + sweep_a.cos() * (radar_size * 0.5), radar_center.y + sweep_a.sin() * (radar_size * 0.5), 1.0, Color::new(0.0, 1.0, 0.8, 0.3));
 
         // 17. Quick Commands Help & Shortcuts
-        draw_rectangle(16.0, screen_height() - 110.0, 340.0, 94.0, Color::new(0.04, 0.07, 0.12, 0.85));
-        draw_rectangle_lines(16.0, screen_height() - 110.0, 340.0, 94.0, 1.0, Color::new(0.0, 0.9, 1.0, 0.3));
+        draw_rectangle(16.0, screen_height() - 110.0, 360.0, 94.0, Color::new(0.04, 0.07, 0.12, 0.85));
+        draw_rectangle_lines(16.0, screen_height() - 110.0, 360.0, 94.0, 1.0, Color::new(0.0, 0.9, 1.0, 0.3));
         draw_text("⚡ ASTROBRAWL RACCOURCIS :", 26.0, screen_height() - 92.0, 12.0, SKYBLUE);
-        draw_text("• [Z/W / Clic Droit] Propulseur  • [Espace / Clic Gauche] Tirer", 26.0, screen_height() - 76.0, 11.0, WHITE);
-        draw_text("• [E] Laser Minier (Classe Minier uniquement)", 26.0, screen_height() - 60.0, 11.0, GOLD);
-        draw_text("• [H] Hangar  • [T] Arbre Talents  • [C] Craft  • [V] Vente Soute", 26.0, screen_height() - 44.0, 11.0, GREEN);
-        draw_text("• [J] Sauter dans un Portail / Faille cosmique", 26.0, screen_height() - 28.0, 11.0, SKYBLUE);
+        draw_text("• [Z Q S D] Déplacement 8-directions  • [Espace / Clic G] Tirer", 26.0, screen_height() - 76.0, 11.0, WHITE);
+        draw_text("• [TAB] Ciblage auto (proche/cycle)  • [Échap] Déverrouiller", 26.0, screen_height() - 60.0, 11.0, GOLD);
+        draw_text("• [E] Laser Minier  • [H] Hangar  • [T] Talents  • [C] Craft  • [V] Vente", 26.0, screen_height() - 44.0, 11.0, GREEN);
+        draw_text("• [J] Saut Portail / Faille cosmique", 26.0, screen_height() - 28.0, 11.0, SKYBLUE);
 
         // 18. Modals (Hangar, Talents, Crafting)
         match game.active_modal {
