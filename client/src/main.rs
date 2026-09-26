@@ -157,6 +157,74 @@ pub mod audio {
     }
 }
 
+// --- Local Storage Persistence Bridge ---
+pub mod storage {
+    #[cfg(target_arch = "wasm32")]
+    extern "C" {
+        pub fn mq_save_progression(ptr: *const u8, len: usize);
+        pub fn mq_load_progression(dest_ptr: *mut u8, max_len: usize) -> i32;
+        pub fn mq_get_player_name(dest_ptr: *mut u8, max_len: usize) -> i32;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn save(bytes: &[u8]) {
+        unsafe { mq_save_progression(bytes.as_ptr(), bytes.len()) };
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn load() -> Option<Vec<u8>> {
+        let mut buf = vec![0u8; 16384];
+        let len = unsafe { mq_load_progression(buf.as_mut_ptr(), buf.len()) };
+        if len > 0 {
+            buf.truncate(len as usize);
+            Some(buf)
+        } else {
+            None
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_player_name() -> String {
+        let mut buf = vec![0u8; 256];
+        let len = unsafe { mq_get_player_name(buf.as_mut_ptr(), buf.len()) };
+        if len > 0 {
+            buf.truncate(len as usize);
+            String::from_utf8(buf).unwrap_or_default().trim().to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn save(_bytes: &[u8]) {}
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load() -> Option<Vec<u8>> {
+        None
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_player_name() -> String {
+        "Chomiam".to_string()
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PlayerSaveData {
+    pub username: String,
+    pub ship_class: ShipClass,
+    pub credits: u32,
+    pub score: u32,
+    pub xp: u32,
+    pub level: u32,
+    pub next_level_xp: u32,
+    pub talent_points: u32,
+    pub talents: TalentTree,
+    pub cargo: CargoHold,
+    pub max_health: f32,
+    pub max_shield: f32,
+}
+
 // --- Visual FX ---
 struct Particle {
     pos: Vec2,
@@ -223,6 +291,7 @@ struct GameClient {
     notification_timer: f32,
     is_muted: bool,
     alarm_sound_timer: f32,
+    autosave_timer: f32,
 
     // Particles & Parallax
     particles: Vec<Particle>,
@@ -292,15 +361,67 @@ impl GameClient {
             notification_timer: 6.0,
             is_muted: false,
             alarm_sound_timer: 0.0,
+            autosave_timer: 0.0,
 
             particles: Vec::new(),
             float_texts: Vec::new(),
             stars,
         };
 
-        // Initialize offline world entities
+        // Initialize offline world entities & other active pilots
         client.init_offline_world();
+        // Load perpetual progression from localStorage
+        client.load_progression();
         client
+    }
+
+    pub fn load_progression(&mut self) {
+        let stored_name = storage::get_player_name();
+        if !stored_name.is_empty() {
+            self.local_ship.username = stored_name;
+        }
+
+        if let Some(bytes) = storage::load() {
+            if let Ok(saved) = astrobrawl_shared::deserialize_packet::<PlayerSaveData>(&bytes) {
+                if !saved.username.is_empty() && (self.local_ship.username == "Pilote Spatial" || self.local_ship.username.is_empty()) {
+                    self.local_ship.username = saved.username;
+                }
+                self.local_ship.ship_class = saved.ship_class;
+                self.local_ship.credits = saved.credits;
+                self.local_ship.score = saved.score;
+                self.local_ship.xp = saved.xp;
+                self.local_ship.level = saved.level.max(1);
+                self.local_ship.next_level_xp = saved.next_level_xp.max(100);
+                self.local_ship.talent_points = saved.talent_points;
+                self.local_ship.talents = saved.talents;
+                self.local_ship.cargo = saved.cargo;
+                self.local_ship.max_health = saved.max_health.max(50.0);
+                self.local_ship.max_shield = saved.max_shield.max(50.0);
+                self.local_ship.health = self.local_ship.max_health;
+                self.local_ship.shield = self.local_ship.max_shield;
+                self.local_ship.apply_talent_bonuses();
+            }
+        }
+    }
+
+    pub fn save_progression(&self) {
+        let save_data = PlayerSaveData {
+            username: self.local_ship.username.clone(),
+            ship_class: self.local_ship.ship_class,
+            credits: self.local_ship.credits,
+            score: self.local_ship.score,
+            xp: self.local_ship.xp,
+            level: self.local_ship.level,
+            next_level_xp: self.local_ship.next_level_xp,
+            talent_points: self.local_ship.talent_points,
+            talents: self.local_ship.talents.clone(),
+            cargo: self.local_ship.cargo.clone(),
+            max_health: self.local_ship.max_health,
+            max_shield: self.local_ship.max_shield,
+        };
+        if let Ok(bytes) = astrobrawl_shared::serialize_packet(&save_data) {
+            storage::save(&bytes);
+        }
     }
 
     fn init_offline_world(&mut self) {
@@ -442,6 +563,34 @@ impl GameClient {
             },
         });
         self.next_entity_id += 1;
+
+        // 4. Spawning Other Active Pilots in the Sector
+        self.players.clear();
+        let simulated_pilots = [
+            ("[FR] Orion_Hunter", ShipClass::Combat, 7, Vec2::new(340.0, -280.0)),
+            ("NovaMiner_42", ShipClass::Minier, 4, Vec2::new(-450.0, 360.0)),
+            ("AstroCargo_Titan", ShipClass::Transport, 6, Vec2::new(560.0, 500.0)),
+            ("Solaris_Ghost", ShipClass::Exploration, 5, Vec2::new(-580.0, -420.0)),
+            ("Viper_Ace", ShipClass::Combat, 9, Vec2::new(-220.0, 720.0)),
+            ("DeepSpace_Drill", ShipClass::Minier, 3, Vec2::new(680.0, -350.0)),
+            ("Quantum_Ranger", ShipClass::Exploration, 6, Vec2::new(160.0, -820.0)),
+            ("StarLord_FR", ShipClass::Combat, 8, Vec2::new(-720.0, 180.0)),
+        ];
+
+        for (name, class, level, pos) in simulated_pilots {
+            let mut pilot = PlayerShip::new(
+                self.next_entity_id,
+                name.to_string(),
+                class,
+                pos,
+            );
+            pilot.level = level;
+            pilot.credits = level * 1400;
+            pilot.health = pilot.max_health;
+            pilot.shield = pilot.max_shield;
+            self.players.insert(pilot.id, pilot);
+            self.next_entity_id += 1;
+        }
     }
 
     fn try_connect(&mut self, url: &str, token: &str) {
@@ -700,6 +849,148 @@ impl GameClient {
 
         self.lasers.extend(new_alien_lasers);
 
+        // --- Simulated Other Pilots AI & Actions ---
+        let mut new_pilot_lasers = Vec::new();
+        let local_id = self.local_player_id;
+        let mut pilots_to_respawn = Vec::new();
+
+        let alien_targets: Vec<(u64, Vec2)> = self.aliens.iter()
+            .filter(|a| a.health > 0.0)
+            .map(|a| (a.id, a.position))
+            .collect();
+
+        let mineral_targets: Vec<(u64, Vec2)> = self.minerals.iter()
+            .filter(|m| m.health > 0.0)
+            .map(|m| (m.id, m.position))
+            .collect();
+
+        let mut mined_damage: HashMap<u64, f32> = HashMap::new();
+
+        for (pid, pilot) in self.players.iter_mut() {
+            if *pid == local_id {
+                continue;
+            }
+
+            if !pilot.is_alive {
+                pilots_to_respawn.push(*pid);
+                continue;
+            }
+
+            // Passive Shield Regeneration
+            pilot.shield = (pilot.shield + 6.0 * dt).min(pilot.max_shield);
+
+            match pilot.ship_class {
+                ShipClass::Minier => {
+                    if let Some((m_id, m_pos)) = mineral_targets.iter()
+                        .min_by(|a, b| pilot.position.distance_to(a.1).partial_cmp(&pilot.position.distance_to(b.1)).unwrap_or(std::cmp::Ordering::Equal))
+                    {
+                        let d = *m_pos - pilot.position;
+                        let dist = d.length();
+                        pilot.rotation = d.y.atan2(d.x);
+
+                        if dist > 220.0 {
+                            pilot.is_thrusting = true;
+                            pilot.is_mining = false;
+                            pilot.mining_target = None;
+                            let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
+                            pilot.velocity = (pilot.velocity + forward * (pilot.ship_class.base_acceleration() * 0.7 * dt)).clamp_length_max(pilot.ship_class.base_speed());
+                        } else {
+                            pilot.is_thrusting = false;
+                            pilot.is_mining = true;
+                            pilot.mining_target = Some(*m_id);
+                            pilot.velocity *= 0.90;
+                            *mined_damage.entry(*m_id).or_insert(0.0) += 20.0 * dt;
+                        }
+                    } else {
+                        pilot.is_mining = false;
+                        pilot.mining_target = None;
+                        pilot.rotation += 0.2 * dt;
+                        pilot.velocity *= 0.96;
+                    }
+                }
+                ShipClass::Combat => {
+                    if let Some((_a_id, a_pos)) = alien_targets.iter()
+                        .min_by(|a, b| pilot.position.distance_to(a.1).partial_cmp(&pilot.position.distance_to(b.1)).unwrap_or(std::cmp::Ordering::Equal))
+                    {
+                        let d = *a_pos - pilot.position;
+                        let dist = d.length();
+                        pilot.rotation = d.y.atan2(d.x);
+
+                        if dist > 260.0 {
+                            pilot.is_thrusting = true;
+                            let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
+                            pilot.velocity = (pilot.velocity + forward * (pilot.ship_class.base_acceleration() * 0.75 * dt)).clamp_length_max(pilot.ship_class.base_speed());
+                        } else {
+                            pilot.is_thrusting = false;
+                            pilot.velocity *= 0.92;
+                        }
+
+                        // Fire lasers at alien
+                        if dist < 420.0 && (now - pilot.id as f32 * 0.25) % 0.85 < dt {
+                            let laser_dir = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
+                            new_pilot_lasers.push(Laser {
+                                id: self.next_entity_id,
+                                shooter_id: pilot.id,
+                                is_alien: false,
+                                position: pilot.position + laser_dir * 22.0,
+                                velocity: laser_dir * LASER_SPEED,
+                                lifetime: LASER_LIFETIME,
+                                damage: pilot.ship_class.base_laser_damage() * 0.75,
+                                color_rgba: [0.2, 0.75, 1.0, 1.0],
+                            });
+                            self.next_entity_id += 1;
+                        }
+                    } else {
+                        pilot.is_thrusting = true;
+                        pilot.rotation += ((pilot.id as f32) * 0.3 + now * 0.2).sin() * 0.6 * dt;
+                        let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
+                        pilot.velocity = (pilot.velocity + forward * (120.0 * dt)).clamp_length_max(180.0);
+                    }
+                }
+                ShipClass::Transport => {
+                    pilot.rotation += (now * 0.15 + (pilot.id as f32)).sin() * 0.3 * dt;
+                    let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
+                    pilot.is_thrusting = true;
+                    pilot.velocity = (pilot.velocity + forward * (70.0 * dt)).clamp_length_max(130.0);
+                }
+                ShipClass::Exploration => {
+                    pilot.rotation += ((pilot.id as f32) * 0.4 + now * 0.3).cos() * 0.9 * dt;
+                    let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
+                    pilot.is_thrusting = true;
+                    pilot.velocity = (pilot.velocity + forward * (220.0 * dt)).clamp_length_max(300.0);
+                }
+            }
+
+            pilot.position += pilot.velocity * dt;
+        }
+
+        // Apply mining damage from other pilots
+        for (m_id, dmg) in mined_damage {
+            if let Some(m) = self.minerals.iter_mut().find(|m| m.id == m_id) {
+                m.health -= dmg;
+                if m.health <= 0.0 {
+                    m.health = m.max_health;
+                }
+            }
+        }
+
+        // Respawn destroyed pilots
+        for pid in pilots_to_respawn {
+            if let Some(pilot) = self.players.get_mut(&pid) {
+                let angle = (pid as f32 * 45.0 + now).sin() * std::f32::consts::TAU;
+                let dist = 320.0 + ((pid as f32 * 17.0).sin().abs()) * 380.0;
+                pilot.position = Vec2::new(angle.cos() * dist, angle.sin() * dist);
+                pilot.velocity = Vec2::ZERO;
+                pilot.health = pilot.max_health;
+                pilot.shield = pilot.max_shield;
+                pilot.is_alive = true;
+                pilot.is_mining = false;
+                pilot.mining_target = None;
+            }
+        }
+
+        self.lasers.extend(new_pilot_lasers);
+
         // Update Lasers
         for laser in &mut self.lasers {
             laser.position += laser.velocity * dt;
@@ -716,7 +1007,7 @@ impl GameClient {
             }
 
             if !laser.is_alien {
-                // Player laser hits aliens
+                // Player or other pilot laser hits aliens
                 for alien in &mut self.aliens {
                     if alien.health > 0.0 && laser.position.distance_to(alien.position) < 26.0 {
                         laser.lifetime = 0.0;
@@ -726,21 +1017,25 @@ impl GameClient {
                             alien.shield -= absorbed;
                             let remaining = dmg - absorbed;
                             alien.health -= remaining;
-                            audio::play(audio::SFX_SHIELD_HIT);
+                            if laser.shooter_id == self.local_player_id {
+                                audio::play(audio::SFX_SHIELD_HIT);
+                            }
                         } else {
                             alien.health -= dmg;
-                            audio::play(audio::SFX_HULL_HIT);
+                            if laser.shooter_id == self.local_player_id {
+                                audio::play(audio::SFX_HULL_HIT);
+                            }
                         }
 
                         if alien.health <= 0.0 {
-                            hit_alien_ids.push(alien.id);
+                            hit_alien_ids.push((alien.id, laser.shooter_id));
                         }
                         break;
                     }
                 }
-            } else if !in_safe_zone && self.local_ship.is_alive {
-                // Alien laser hits player
-                if laser.position.distance_to(player_pos) < SHIP_RADIUS + 4.0 {
+            } else {
+                // Alien laser hits local player
+                if !in_safe_zone && self.local_ship.is_alive && laser.position.distance_to(player_pos) < SHIP_RADIUS + 4.0 {
                     laser.lifetime = 0.0;
                     let dmg = laser.damage;
                     if self.local_ship.shield > 0.0 {
@@ -760,6 +1055,28 @@ impl GameClient {
                         player_destroyed = true;
                     }
                 }
+
+                // Alien laser can also hit other pilots
+                if laser.lifetime > 0.0 {
+                    for (pid, pilot) in self.players.iter_mut() {
+                        if *pid != self.local_player_id && pilot.is_alive && laser.position.distance_to(pilot.position) < SHIP_RADIUS + 4.0 {
+                            laser.lifetime = 0.0;
+                            let dmg = laser.damage;
+                            if pilot.shield > 0.0 {
+                                let absorbed = dmg.min(pilot.shield);
+                                pilot.shield -= absorbed;
+                                pilot.health -= dmg - absorbed;
+                            } else {
+                                pilot.health -= dmg;
+                            }
+                            if pilot.health <= 0.0 {
+                                pilot.health = 0.0;
+                                pilot.is_alive = false;
+                            }
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -772,7 +1089,7 @@ impl GameClient {
         self.lasers.retain(|l| l.lifetime > 0.0);
 
         // Handle Dead Aliens & Drop Loot Boxes
-        for dead_id in hit_alien_ids {
+        for (dead_id, killer_id) in hit_alien_ids {
             if let Some(pos) = self.aliens.iter().position(|a| a.id == dead_id) {
                 let alien = self.aliens.remove(pos);
                 audio::play(audio::SFX_EXPLOSION);
@@ -781,21 +1098,28 @@ impl GameClient {
 
                 let xp = alien.alien_type.xp_reward();
                 let credits = alien.alien_type.credits_reward();
-                if self.local_ship.add_xp(xp) {
-                    audio::play(audio::SFX_LEVEL_UP);
-                    self.spawn_float_text(
-                        format!("⭐ NIVEAU SUPÉRIEUR ! (Lv. {})", self.local_ship.level),
-                        self.local_ship.position + Vec2::new(0.0, -45.0),
-                        GOLD,
-                    );
-                }
 
-                self.local_ship.credits += credits;
-                self.spawn_float_text(
-                    format!("+{} XP • +{} C.", xp, credits),
-                    alien.position + Vec2::new(0.0, -30.0),
-                    GREEN,
-                );
+                if killer_id == self.local_player_id {
+                    if self.local_ship.add_xp(xp) {
+                        audio::play(audio::SFX_LEVEL_UP);
+                        self.spawn_float_text(
+                            format!("⭐ NIVEAU SUPÉRIEUR ! (Lv. {})", self.local_ship.level),
+                            self.local_ship.position + Vec2::new(0.0, -45.0),
+                            GOLD,
+                        );
+                    }
+
+                    self.local_ship.credits += credits;
+                    self.spawn_float_text(
+                        format!("+{} XP • +{} C.", xp, credits),
+                        alien.position + Vec2::new(0.0, -30.0),
+                        GREEN,
+                    );
+                    self.save_progression();
+                } else if let Some(p) = self.players.get_mut(&killer_id) {
+                    p.credits += credits;
+                    p.add_xp(xp);
+                }
 
                 // Drop Cargo Box
                 dropped_loot.push(LootBox {
@@ -841,6 +1165,7 @@ impl GameClient {
                 player_pos + Vec2::new(0.0, -32.0),
                 YELLOW,
             );
+            self.save_progression();
         }
 
         self.loot_boxes.retain(|lb| lb.lifetime > 0.0 && !collected_box_ids.contains(&lb.id));
@@ -908,6 +1233,7 @@ impl GameClient {
                             player_pos + Vec2::new(0.0, -32.0),
                             Color::new(0.2, 1.0, 0.5, 1.0),
                         );
+                        self.save_progression();
                     } else {
                         self.spawn_float_text(
                             "⚠️ SOUTE PLEINE ! Vendez à la base".to_string(),
@@ -921,6 +1247,13 @@ impl GameClient {
                 }
             }
         }
+
+        // Autosave progression periodically
+        self.autosave_timer += dt;
+        if self.autosave_timer >= 3.0 {
+            self.autosave_timer = 0.0;
+            self.save_progression();
+        }
     }
 
     fn shoot_laser(&mut self) {
@@ -930,10 +1263,16 @@ impl GameClient {
 
         audio::play(audio::SFX_LASER);
 
-        // Auto-aim towards locked target if alive and valid, else ship rotation
+        // Auto-aim towards locked target (alien or other pilot) if alive and valid, else ship rotation
         let dir = if let Some(target_id) = self.locked_target_id {
             if let Some(target) = self.aliens.iter().find(|a| a.id == target_id && a.health > 0.0) {
                 (target.position - self.local_ship.position).normalize()
+            } else if let Some(target_p) = self.players.get(&target_id) {
+                if target_p.is_alive {
+                    (target_p.position - self.local_ship.position).normalize()
+                } else {
+                    Vec2::new(self.local_ship.rotation.cos(), self.local_ship.rotation.sin())
+                }
             } else {
                 Vec2::new(self.local_ship.rotation.cos(), self.local_ship.rotation.sin())
             }
@@ -988,6 +1327,12 @@ async fn main() {
         // Network polling
         game.poll_network();
 
+        // Sync player username from localStorage (from HTML modal callsign)
+        let stored_name = storage::get_player_name();
+        if !stored_name.is_empty() && (game.local_ship.username == "Pilote Spatial" || game.local_ship.username.is_empty()) {
+            game.local_ship.username = stored_name;
+        }
+
         let now = get_time() as f32;
         if (now as f64) - game.last_ping_send > 2.0 && game.connected {
             game.last_ping_send = now as f64;
@@ -1028,19 +1373,34 @@ async fn main() {
             );
         }
 
-        // Tab Targeting: Select or cycle nearest alien
+        // Tab Targeting: Select or cycle nearest alien or other pilot
         if is_key_pressed(KeyCode::Tab) {
             let p_pos = game.local_ship.position;
-            let mut candidates: Vec<(u64, f32)> = game.aliens.iter()
-                .filter(|a| a.health > 0.0)
-                .map(|a| (a.id, p_pos.distance_to(a.position)))
-                .filter(|(_, d)| *d < 1250.0)
-                .collect();
+            let mut candidates: Vec<(u64, f32, String)> = Vec::new();
+
+            for a in &game.aliens {
+                if a.health > 0.0 {
+                    let d = p_pos.distance_to(a.position);
+                    if d < 1350.0 {
+                        candidates.push((a.id, d, format!("👽 {}", a.alien_type.name())));
+                    }
+                }
+            }
+
+            for p in game.players.values() {
+                if p.id != game.local_player_id && p.is_alive {
+                    let d = p_pos.distance_to(p.position);
+                    if d < 1350.0 {
+                        candidates.push((p.id, d, format!("👨‍🚀 {}", p.username)));
+                    }
+                }
+            }
+
             candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
             if !candidates.is_empty() {
                 if let Some(cur_id) = game.locked_target_id {
-                    if let Some(pos) = candidates.iter().position(|(id, _)| *id == cur_id) {
+                    if let Some(pos) = candidates.iter().position(|(id, _, _)| *id == cur_id) {
                         let next_idx = (pos + 1) % candidates.len();
                         game.locked_target_id = Some(candidates[next_idx].0);
                     } else {
@@ -1053,9 +1413,9 @@ async fn main() {
                 audio::play(audio::SFX_TARGET_LOCK);
 
                 if let Some(locked_id) = game.locked_target_id {
-                    if let Some(alien) = game.aliens.iter().find(|a| a.id == locked_id) {
+                    if let Some((_, _, label)) = candidates.iter().find(|(id, _, _)| *id == locked_id) {
                         game.spawn_float_text(
-                            format!("🎯 CIBLE: {}", alien.alien_type.name()),
+                            format!("🎯 CIBLE: {}", label),
                             game.local_ship.position + Vec2::new(0.0, -42.0),
                             GOLD,
                         );
@@ -1087,6 +1447,7 @@ async fn main() {
                 game.local_ship.credits += credits;
                 let pos = game.local_ship.position;
                 game.spawn_float_text(format!("💰 Minerais Vendus : +{} C.", credits), pos + Vec2::new(0.0, -35.0), GOLD);
+                game.save_progression();
                 game.send_message(&ClientMessage::SellCargo);
             }
         }
@@ -1530,7 +1891,7 @@ async fn main() {
             }
         }
 
-        // 11. Other Multiplayer Players
+        // 11. Other Multiplayer & Simulated Pilots
         for player in game.players.values() {
             if player.id == game.local_player_id || !player.is_alive {
                 continue;
@@ -1541,20 +1902,49 @@ async fn main() {
             let rot = player.rotation;
 
             let nose = to_mq(Vec2::new(px + rot.cos() * 24.0, py + rot.sin() * 24.0));
-            let left_wing = to_mq(Vec2::new(px + (rot + 2.5).cos() * 20.0, py + (rot + 2.5).sin() * 20.0));
-            let right_wing = to_mq(Vec2::new(px + (rot - 2.5).cos() * 20.0, py + (rot - 2.5).sin() * 20.0));
+            let left_wing = to_mq(Vec2::new(px + (rot + 2.45).cos() * 21.0, py + (rot + 2.45).sin() * 21.0));
+            let right_wing = to_mq(Vec2::new(px + (rot - 2.45).cos() * 21.0, py + (rot - 2.45).sin() * 21.0));
             let engine = to_mq(Vec2::new(px + (rot + std::f32::consts::PI).cos() * 14.0, py + (rot + std::f32::consts::PI).sin() * 14.0));
 
-            draw_triangle(nose, left_wing, engine, Color::new(0.65, 0.15, 0.2, 1.0));
-            draw_triangle(nose, right_wing, engine, Color::new(0.65, 0.15, 0.2, 1.0));
-            let uname = &player.username;
-            let u_dim = measure_crisp_text(custom_font.as_ref(), uname, 14.0);
-            let pb_w = (u_dim.width + 16.0).max(60.0);
-            let pb_x = px - pb_w * 0.5;
-            let pb_y = py + 26.0;
+            // Thruster flame when moving
+            if player.is_thrusting {
+                let flame_len = 14.0 + ((now * 28.0).sin() * 3.5);
+                let flame_tip = to_mq(Vec2::new(px + (rot + std::f32::consts::PI).cos() * (14.0 + flame_len), py + (rot + std::f32::consts::PI).sin() * (14.0 + flame_len)));
+                draw_triangle(left_wing * 0.4 + engine * 0.6, flame_tip, right_wing * 0.4 + engine * 0.6, mocha::PEACH);
+            }
 
-            // Health & Shield Bars Above Enemy Player
-            let p_bar_w = 48.0;
+            // Ship class specific hull & border colors
+            let (hull_col, border_col) = match player.ship_class {
+                ShipClass::Combat => (Color::new(0.14, 0.24, 0.45, 1.0), mocha::BLUE),
+                ShipClass::Minier => (Color::new(0.48, 0.38, 0.12, 1.0), mocha::YELLOW),
+                ShipClass::Transport => (Color::new(0.42, 0.25, 0.16, 1.0), mocha::PEACH),
+                ShipClass::Exploration => (Color::new(0.16, 0.40, 0.28, 1.0), mocha::GREEN),
+            };
+
+            draw_triangle(nose, left_wing, engine, hull_col);
+            draw_triangle(nose, right_wing, engine, hull_col);
+            draw_triangle_lines(nose, left_wing, engine, 1.8, border_col);
+            draw_triangle_lines(nose, right_wing, engine, 1.8, border_col);
+
+            // Cockpit glass
+            let cockpit = Vec2::new(px + rot.cos() * 6.0, py + rot.sin() * 6.0);
+            draw_circle(cockpit.x, cockpit.y, 3.8, mocha::SAPPHIRE);
+
+            // Mining laser beam if mining
+            if player.is_mining {
+                if let Some(target_m_id) = player.mining_target {
+                    if let Some(mineral) = game.minerals.iter().find(|m| m.id == target_m_id) {
+                        let mx = mineral.position.x - game.camera_pos.x + half_screen.x;
+                        let my = mineral.position.y - game.camera_pos.y + half_screen.y;
+                        let beam_w = 2.0 + ((now * 25.0).sin() * 1.0).abs();
+                        draw_line(cockpit.x, cockpit.y, mx, my, beam_w, mocha::YELLOW);
+                        draw_circle(mx, my, 4.0, mocha::YELLOW);
+                    }
+                }
+            }
+
+            // Health & Shield Bars Above Other Ship
+            let p_bar_w = 50.0;
             let p_bar_x = px - p_bar_w * 0.5;
             let p_sh_p = (player.shield / player.max_shield).clamp(0.0, 1.0);
             draw_rectangle(p_bar_x, py - 34.0, p_bar_w, 4.0, mocha::SURFACE0);
@@ -1563,10 +1953,40 @@ async fn main() {
             draw_rectangle(p_bar_x, py - 28.0, p_bar_w, 4.0, mocha::SURFACE0);
             draw_rectangle(p_bar_x, py - 28.0, p_bar_w * p_hp_p, 4.0, mocha::RED);
 
-            // Pseudo Below Ship
-            draw_rectangle(pb_x, pb_y, pb_w, 20.0, Color::new(0.09, 0.09, 0.15, 0.88));
-            draw_rectangle_lines(pb_x, pb_y, pb_w, 20.0, 1.0, mocha::RED);
-            draw_crisp_text_shadow(custom_font.as_ref(), uname, px - u_dim.width * 0.5, pb_y + 14.0, 14.0, mocha::PEACH);
+            // Target Lock Brackets around other player if targeted
+            if game.locked_target_id == Some(player.id) {
+                let bracket_len = 9.0;
+                let half_b = 32.0;
+                let target_col = mocha::YELLOW;
+                draw_line(px - half_b, py - half_b, px - half_b + bracket_len, py - half_b, 2.5, target_col);
+                draw_line(px - half_b, py - half_b, px - half_b, py - half_b + bracket_len, 2.5, target_col);
+                draw_line(px + half_b, py - half_b, px + half_b - bracket_len, py - half_b, 2.5, target_col);
+                draw_line(px + half_b, py - half_b, px + half_b - bracket_len, py - half_b, 2.5, target_col);
+                draw_line(px - half_b, py + half_b, px - half_b + bracket_len, py + half_b, 2.5, target_col);
+                draw_line(px - half_b, py + half_b, px - half_b, py + half_b + bracket_len, 2.5, target_col);
+                draw_line(px + half_b, py + half_b, px + half_b - bracket_len, py + half_b, 2.5, target_col);
+                draw_line(px + half_b, py + half_b, px + half_b - bracket_len, py + half_b, 2.5, target_col);
+
+                let dist_m = (game.local_ship.position.distance_to(player.position)) as u32;
+                let lock_str = format!("🎯 PILOTE: {}m", dist_m);
+                let ldim = measure_crisp_text(custom_font.as_ref(), &lock_str, 13.0);
+                draw_crisp_text_shadow(custom_font.as_ref(), &lock_str, px - ldim.width * 0.5, py + half_b + 20.0, 13.0, mocha::YELLOW);
+            }
+
+            // Pseudo & Class Badge Below Other Ship
+            let uname = &player.username;
+            let class_str = format!("Lv.{} • {}", player.level, player.ship_class.name());
+            let u_dim = measure_crisp_text(custom_font.as_ref(), uname, 14.0);
+            let c_dim = measure_crisp_text(custom_font.as_ref(), &class_str, 11.0);
+            let pb_w = (u_dim.width.max(c_dim.width) + 22.0).max(74.0);
+            let pb_h = 32.0;
+            let pb_x = px - pb_w * 0.5;
+            let pb_y = py + 36.0;
+
+            draw_rectangle(pb_x, pb_y, pb_w, pb_h, Color::new(0.09, 0.09, 0.15, 0.90));
+            draw_rectangle_lines(pb_x, pb_y, pb_w, pb_h, 1.2, border_col);
+            draw_crisp_text_shadow(custom_font.as_ref(), uname, px - u_dim.width * 0.5, pb_y + 15.0, 14.0, mocha::PEACH);
+            draw_crisp_text(custom_font.as_ref(), &class_str, px - c_dim.width * 0.5, pb_y + 27.0, 11.0, mocha::SKY);
         }
 
         // 12. Local Player Ship (Always Rendered!)
@@ -1634,17 +2054,17 @@ async fn main() {
 
             let u_dim = measure_crisp_text(custom_font.as_ref(), &raw_username, 16.0);
             let t_dim = measure_crisp_text(custom_font.as_ref(), &class_tag, 12.0);
-            let badge_w = (u_dim.width.max(t_dim.width) + 20.0).max(74.0);
-            let badge_h = 32.0;
+            let badge_w = (u_dim.width.max(t_dim.width) + 24.0).max(80.0);
+            let badge_h = 34.0;
             let badge_x = sx - badge_w * 0.5;
-            let badge_y = sy + 28.0;
+            let badge_y = sy + 36.0;
 
             // Catppuccin Mocha Mantle Badge
-            draw_rectangle(badge_x, badge_y, badge_w, badge_h, Color::new(0.09, 0.09, 0.15, 0.90));
-            draw_rectangle_lines(badge_x, badge_y, badge_w, badge_h, 1.0, mocha::SURFACE1);
+            draw_rectangle(badge_x, badge_y, badge_w, badge_h, Color::new(0.09, 0.09, 0.15, 0.92));
+            draw_rectangle_lines(badge_x, badge_y, badge_w, badge_h, 1.5, mocha::MAUVE);
 
-            draw_crisp_text_shadow(custom_font.as_ref(), &raw_username, sx - u_dim.width * 0.5, badge_y + 15.0, 16.0, mocha::TEXT);
-            draw_crisp_text(custom_font.as_ref(), &class_tag, sx - t_dim.width * 0.5, badge_y + 27.0, 12.0, mocha::MAUVE);
+            draw_crisp_text_shadow(custom_font.as_ref(), &raw_username, sx - u_dim.width * 0.5, badge_y + 16.0, 16.0, mocha::YELLOW);
+            draw_crisp_text(custom_font.as_ref(), &class_tag, sx - t_dim.width * 0.5, badge_y + 29.0, 12.0, mocha::SKY);
         }
 
         // 13. Particles & Floating Texts
@@ -1669,7 +2089,7 @@ async fn main() {
         let (mouse_x, mouse_y) = mouse_position();
         let mouse_clicked = is_mouse_button_pressed(MouseButton::Left);
 
-        let hud_w = 890.0_f32.min(screen_width() - 32.0);
+        let hud_w = 980.0_f32.min(screen_width() - 32.0);
         let hud_h = 44.0;
         let hud_x = (screen_width() - hud_w) * 0.5;
         let hud_y = 12.0;
@@ -1677,20 +2097,34 @@ async fn main() {
         draw_rectangle(hud_x, hud_y, hud_w, hud_h, Color::new(0.09, 0.09, 0.15, 0.94));
         draw_rectangle_lines(hud_x, hud_y, hud_w, hud_h, 1.5, mocha::SURFACE1);
 
-        let credits_str = format!("💰 Crédits: {}", game.local_ship.credits);
-        draw_crisp_text_shadow(custom_font.as_ref(), &credits_str, hud_x + 18.0, hud_y + 27.0, 16.0, mocha::YELLOW);
+        // Pilot Callsign Badge (Top Bar - Prominently Displayed!)
+        let pilot_name = if game.local_ship.username.is_empty() { "Commandant" } else { &game.local_ship.username };
+        let pilot_pill = format!("👨‍🚀 {}", pilot_name);
+        let p_dim = measure_crisp_text(custom_font.as_ref(), &pilot_pill, 15.0);
+        let p_pill_w = p_dim.width + 20.0;
+        draw_rectangle(hud_x + 10.0, hud_y + 7.0, p_pill_w, 30.0, Color::new(0.15, 0.15, 0.25, 0.85));
+        draw_rectangle_lines(hud_x + 10.0, hud_y + 7.0, p_pill_w, 30.0, 1.2, mocha::MAUVE);
+        draw_crisp_text_shadow(custom_font.as_ref(), &pilot_pill, hud_x + 20.0, hud_y + 27.0, 15.0, mocha::YELLOW);
+
+        let mut cur_x = hud_x + 10.0 + p_pill_w + 14.0;
+
+        let credits_str = format!("💰 {} C", game.local_ship.credits);
+        draw_crisp_text_shadow(custom_font.as_ref(), &credits_str, cur_x, hud_y + 27.0, 15.0, mocha::PEACH);
+        cur_x += 110.0;
 
         let cargo_used = game.local_ship.cargo.used_capacity();
         let cargo_max = game.local_ship.cargo.max_capacity;
         let cargo_col = if game.local_ship.cargo.is_full() { mocha::RED } else { mocha::SAPPHIRE };
-        let cargo_str = format!("📦 Soute: {} / {} kg", cargo_used, cargo_max);
-        draw_crisp_text_shadow(custom_font.as_ref(), &cargo_str, hud_x + 180.0, hud_y + 27.0, 16.0, cargo_col);
+        let cargo_str = format!("📦 {}/{} kg", cargo_used, cargo_max);
+        draw_crisp_text_shadow(custom_font.as_ref(), &cargo_str, cur_x, hud_y + 27.0, 15.0, cargo_col);
+        cur_x += 120.0;
 
-        let level_str = format!("⭐ Lv. {} ({} / {} XP)", game.local_ship.level, game.local_ship.xp, game.local_ship.next_level_xp);
-        draw_crisp_text_shadow(custom_font.as_ref(), &level_str, hud_x + 360.0, hud_y + 27.0, 16.0, mocha::GREEN);
+        let level_str = format!("⭐ Lv.{} ({} / {} XP)", game.local_ship.level, game.local_ship.xp, game.local_ship.next_level_xp);
+        draw_crisp_text_shadow(custom_font.as_ref(), &level_str, cur_x, hud_y + 27.0, 15.0, mocha::GREEN);
+        cur_x += 170.0;
 
         let map_str = format!("🌐 {}", game.current_map.name());
-        draw_crisp_text_shadow(custom_font.as_ref(), &map_str, hud_x + 550.0, hud_y + 27.0, 15.0, mocha::LAVENDER);
+        draw_crisp_text_shadow(custom_font.as_ref(), &map_str, cur_x, hud_y + 27.0, 14.0, mocha::LAVENDER);
 
         // Audio Mute Pill Button in Top HUD
         let mute_btn_w = 98.0;
@@ -1724,12 +2158,12 @@ async fn main() {
 
         // Target Info Box in HUD (Catppuccin Mocha)
         if let Some(target_id) = game.locked_target_id {
-            if let Some(alien) = game.aliens.iter().find(|a| a.id == target_id && a.health > 0.0) {
-                let tw = 280.0;
-                let th = 66.0;
-                let tx = screen_width() - tw - 20.0;
-                let ty = 66.0;
+            let tw = 290.0;
+            let th = 68.0;
+            let tx = screen_width() - tw - 20.0;
+            let ty = 66.0;
 
+            if let Some(alien) = game.aliens.iter().find(|a| a.id == target_id && a.health > 0.0) {
                 draw_rectangle(tx, ty, tw, th, Color::new(0.09, 0.09, 0.15, 0.94));
                 draw_rectangle_lines(tx, ty, tw, th, 1.5, mocha::RED);
 
@@ -1738,15 +2172,35 @@ async fn main() {
                 draw_crisp_text_shadow(custom_font.as_ref(), &t_title, tx + 12.0, ty + 20.0, 15.0, mocha::RED);
 
                 let hp_p = (alien.health / alien.max_health).clamp(0.0, 1.0);
-                draw_rectangle(tx + 12.0, ty + 28.0, 256.0, 9.0, mocha::SURFACE0);
-                draw_rectangle(tx + 12.0, ty + 28.0, 256.0 * hp_p, 9.0, mocha::RED);
+                draw_rectangle(tx + 12.0, ty + 28.0, 266.0, 9.0, mocha::SURFACE0);
+                draw_rectangle(tx + 12.0, ty + 28.0, 266.0 * hp_p, 9.0, mocha::RED);
 
                 let sh_p = (alien.shield / alien.max_shield).clamp(0.0, 1.0);
-                draw_rectangle(tx + 12.0, ty + 41.0, 256.0, 7.0, mocha::SURFACE0);
-                draw_rectangle(tx + 12.0, ty + 41.0, 256.0 * sh_p, 7.0, mocha::SAPPHIRE);
+                draw_rectangle(tx + 12.0, ty + 41.0, 266.0, 7.0, mocha::SURFACE0);
+                draw_rectangle(tx + 12.0, ty + 41.0, 266.0 * sh_p, 7.0, mocha::SAPPHIRE);
 
                 let hp_txt = format!("{:.0} / {:.0} PV", alien.health, alien.max_health);
-                draw_crisp_text(custom_font.as_ref(), &hp_txt, tx + 12.0, ty + 59.0, 11.0, mocha::SUBTEXT0);
+                draw_crisp_text(custom_font.as_ref(), &hp_txt, tx + 12.0, ty + 60.0, 11.0, mocha::SUBTEXT0);
+            } else if let Some(other_player) = game.players.get(&target_id) {
+                if other_player.is_alive {
+                    draw_rectangle(tx, ty, tw, th, Color::new(0.09, 0.09, 0.15, 0.94));
+                    draw_rectangle_lines(tx, ty, tw, th, 1.5, mocha::YELLOW);
+
+                    let dist_m = game.local_ship.position.distance_to(other_player.position) as u32;
+                    let t_title = format!("🎯 {} • Lv.{} ({}m)", other_player.username, other_player.level, dist_m);
+                    draw_crisp_text_shadow(custom_font.as_ref(), &t_title, tx + 12.0, ty + 20.0, 15.0, mocha::YELLOW);
+
+                    let hp_p = (other_player.health / other_player.max_health).clamp(0.0, 1.0);
+                    draw_rectangle(tx + 12.0, ty + 28.0, 266.0, 9.0, mocha::SURFACE0);
+                    draw_rectangle(tx + 12.0, ty + 28.0, 266.0 * hp_p, 9.0, mocha::GREEN);
+
+                    let sh_p = (other_player.shield / other_player.max_shield).clamp(0.0, 1.0);
+                    draw_rectangle(tx + 12.0, ty + 41.0, 266.0, 7.0, mocha::SURFACE0);
+                    draw_rectangle(tx + 12.0, ty + 41.0, 266.0 * sh_p, 7.0, mocha::SAPPHIRE);
+
+                    let hp_txt = format!("{:.0} / {:.0} PV • {}", other_player.health, other_player.max_health, other_player.ship_class.name());
+                    draw_crisp_text(custom_font.as_ref(), &hp_txt, tx + 12.0, ty + 60.0, 11.0, mocha::SKY);
+                }
             }
         }
 
@@ -1781,6 +2235,20 @@ async fn main() {
                 if game.locked_target_id == Some(a.id) {
                     let ring_pulse = ((now * 10.0).sin() * 2.0 + 5.0).abs();
                     draw_circle_lines(ax, ay, ring_pulse, 1.5, mocha::YELLOW);
+                }
+            }
+        }
+
+        // Other Pilots on Radar
+        for p in game.players.values() {
+            if p.id != game.local_player_id && p.is_alive {
+                let ox = radar_center.x + p.position.x * radar_scale;
+                let oy = radar_center.y + p.position.y * radar_scale;
+                draw_circle(ox, oy, 2.5, mocha::SKY);
+
+                if game.locked_target_id == Some(p.id) {
+                    let ring_pulse = ((now * 10.0).sin() * 2.0 + 5.0).abs();
+                    draw_circle_lines(ox, oy, ring_pulse, 1.5, mocha::YELLOW);
                 }
             }
         }
@@ -1916,6 +2384,7 @@ async fn main() {
                         game.local_ship.shield = class.base_shield();
                         game.local_ship.apply_talent_bonuses();
                         game.spawn_float_text(format!("🚀 Vaisseau équipé : {}", class.name()), game.local_ship.position, mocha::GREEN);
+                        game.save_progression();
                         game.send_message(&ClientMessage::SelectClass { class: *class });
                     }
                 }
@@ -2039,6 +2508,7 @@ async fn main() {
                         }
                         game.local_ship.apply_talent_bonuses();
                         game.spawn_float_text(format!("🧬 Compétence améliorée : {}", title), game.local_ship.position, mocha::GREEN);
+                        game.save_progression();
                         game.send_message(&ClientMessage::UpgradeTalent { talent_index: *talent_idx });
                     }
                 }
@@ -2153,6 +2623,7 @@ async fn main() {
                         }
 
                         game.spawn_float_text(format!("✨ Assemblé avec succès : {}", recipe.name), game.local_ship.position, mocha::YELLOW);
+                        game.save_progression();
                         game.send_message(&ClientMessage::Craft { recipe_index: idx as u32 });
                     }
                 }

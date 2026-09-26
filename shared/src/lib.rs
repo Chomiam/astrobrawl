@@ -66,6 +66,19 @@ impl Vec2 {
             y: self.y + (other.y - self.y) * t,
         }
     }
+
+    pub fn clamp_length_max(self, max: f32) -> Self {
+        let len_sq = self.length_squared();
+        if len_sq > max * max && len_sq > 0.0001 {
+            let len = len_sq.sqrt();
+            Self {
+                x: self.x * (max / len),
+                y: self.y * (max / len),
+            }
+        } else {
+            self
+        }
+    }
 }
 
 impl std::ops::Add for Vec2 {
@@ -95,6 +108,13 @@ impl std::ops::Mul<f32> for Vec2 {
             x: self.x * scalar,
             y: self.y * scalar,
         }
+    }
+}
+
+impl std::ops::MulAssign<f32> for Vec2 {
+    fn mul_assign(&mut self, scalar: f32) {
+        self.x *= scalar;
+        self.y *= scalar;
     }
 }
 

@@ -253,6 +253,11 @@
                 <div class="game-title">⚡ ASTROBRAWL ⚡</div>
                 <div class="game-subtitle">Multijoueur Spatial 2D • Dark Orbit Style</div>
 
+                <div class="input-group" style="margin-top: 0; margin-bottom: 14px;">
+                    <label for="pilot-callsign">👨‍🚀 Nom de Code / Pseudo du Commandant :</label>
+                    <input type="text" id="pilot-callsign" class="input-field" placeholder="ex: Chomiam" value="Chomiam">
+                </div>
+
                 <div class="auth-buttons">
                     <button id="btn-login-guest" class="btn btn-guest">
                         🚀 Jouer Immédiatement (Mode Invité / Solo)
@@ -388,13 +393,22 @@
             }
         });
 
+        // Prefill callsign & GitHub input from localStorage
+        const storedUsername = localStorage.getItem('astrobrawl_username') || 'Chomiam';
+        const callsignInput = document.getElementById('pilot-callsign');
+        if (callsignInput) callsignInput.value = storedUsername;
+        const ghInput = document.getElementById('github-username');
+        if (ghInput) ghInput.value = storedUsername;
+
         // Guest login click
         document.getElementById('btn-login-guest').addEventListener('click', async () => {
-            const storedName = localStorage.getItem('astrobrawl_username') || 'Pilote Invité';
-            startGameSession('guest_offline', storedName);
+            const inputVal = (callsignInput ? callsignInput.value.trim() : '') || storedUsername;
+            localStorage.setItem('astrobrawl_username', inputVal);
+            startGameSession('guest_offline', inputVal);
         });
 
         function startGameSession(token, username) {
+            localStorage.setItem('astrobrawl_username', username);
             document.getElementById('auth-overlay').classList.add('hidden');
             const avatarUrl = localStorage.getItem('astrobrawl_avatar');
             const playerSpan = document.getElementById('hud-player');
@@ -410,7 +424,6 @@
 
         // Auto-login if token exists
         const storedToken = localStorage.getItem('astrobrawl_auth_token');
-        const storedUsername = localStorage.getItem('astrobrawl_username');
         if (storedToken) {
             startGameSession(storedToken, storedUsername);
         }
@@ -828,6 +841,49 @@
                 };
                 importObject.env.mq_toggle_mute = function() {
                     return SfxEngine.toggleMute() ? 1 : 0;
+                };
+                importObject.env.mq_save_progression = function(ptr, len) {
+                    try {
+                        const bytes = new Uint8Array(wasm_memory.buffer, ptr, len);
+                        let binary = '';
+                        for (let i = 0; i < bytes.byteLength; i++) {
+                            binary += String.fromCharCode(bytes[i]);
+                        }
+                        localStorage.setItem('astrobrawl_save', btoa(binary));
+                    } catch (e) {
+                        console.error("Error saving progression:", e);
+                    }
+                };
+                importObject.env.mq_load_progression = function(dest_ptr, max_len) {
+                    try {
+                        const b64 = localStorage.getItem('astrobrawl_save');
+                        if (!b64) return 0;
+                        const binary = atob(b64);
+                        const copyLen = Math.min(binary.length, max_len);
+                        const dest = new Uint8Array(wasm_memory.buffer, dest_ptr, copyLen);
+                        for (let i = 0; i < copyLen; i++) {
+                            dest[i] = binary.charCodeAt(i);
+                        }
+                        return copyLen;
+                    } catch (e) {
+                        console.error("Error loading progression:", e);
+                        return 0;
+                    }
+                };
+                importObject.env.mq_get_player_name = function(dest_ptr, max_len) {
+                    try {
+                        const name = localStorage.getItem('astrobrawl_username') || '';
+                        if (!name) return 0;
+                        const encoder = new TextEncoder();
+                        const bytes = encoder.encode(name);
+                        const copyLen = Math.min(bytes.length, max_len);
+                        const dest = new Uint8Array(wasm_memory.buffer, dest_ptr, copyLen);
+                        dest.set(bytes.subarray(0, copyLen));
+                        return copyLen;
+                    } catch (e) {
+                        console.error("Error getting player name:", e);
+                        return 0;
+                    }
                 };
             }
         });
