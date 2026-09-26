@@ -7,6 +7,67 @@ fn to_mq(v: Vec2) -> macroquad::math::Vec2 {
     vec2(v.x, v.y)
 }
 
+pub mod mocha {
+    use macroquad::color::Color;
+
+    pub const ROSEWATER: Color = Color::new(0.96, 0.88, 0.86, 1.0);
+    pub const FLAMINGO: Color  = Color::new(0.95, 0.80, 0.80, 1.0);
+    pub const PINK: Color      = Color::new(0.96, 0.76, 0.91, 1.0);
+    pub const MAUVE: Color     = Color::new(0.80, 0.65, 0.97, 1.0);
+    pub const RED: Color       = Color::new(0.95, 0.55, 0.66, 1.0);
+    pub const MAROON: Color    = Color::new(0.92, 0.63, 0.67, 1.0);
+    pub const PEACH: Color     = Color::new(0.98, 0.70, 0.53, 1.0);
+    pub const YELLOW: Color    = Color::new(0.98, 0.89, 0.69, 1.0);
+    pub const GREEN: Color     = Color::new(0.65, 0.89, 0.63, 1.0);
+    pub const TEAL: Color      = Color::new(0.58, 0.89, 0.84, 1.0);
+    pub const SKY: Color       = Color::new(0.54, 0.86, 0.92, 1.0);
+    pub const SAPPHIRE: Color  = Color::new(0.45, 0.78, 0.93, 1.0);
+    pub const BLUE: Color      = Color::new(0.54, 0.71, 0.98, 1.0);
+    pub const LAVENDER: Color  = Color::new(0.71, 0.75, 0.99, 1.0);
+    pub const TEXT: Color      = Color::new(0.80, 0.84, 0.96, 1.0);
+    pub const SUBTEXT1: Color  = Color::new(0.73, 0.76, 0.87, 1.0);
+    pub const SUBTEXT0: Color  = Color::new(0.65, 0.68, 0.78, 1.0);
+    pub const OVERLAY2: Color  = Color::new(0.58, 0.60, 0.70, 1.0);
+    pub const OVERLAY1: Color  = Color::new(0.50, 0.52, 0.61, 1.0);
+    pub const OVERLAY0: Color  = Color::new(0.42, 0.44, 0.53, 1.0);
+    pub const SURFACE2: Color  = Color::new(0.35, 0.36, 0.44, 1.0);
+    pub const SURFACE1: Color  = Color::new(0.27, 0.28, 0.35, 1.0);
+    pub const SURFACE0: Color  = Color::new(0.19, 0.20, 0.27, 1.0);
+    pub const BASE: Color      = Color::new(0.12, 0.12, 0.18, 1.0);
+    pub const MANTLE: Color    = Color::new(0.09, 0.09, 0.15, 1.0);
+    pub const CRUST: Color     = Color::new(0.07, 0.07, 0.11, 1.0);
+}
+
+fn draw_crisp_text(font: Option<&Font>, text: &str, x: f32, y: f32, size: f32, color: Color) {
+    if let Some(f) = font {
+        draw_text_ex(
+            text,
+            x,
+            y,
+            TextParams {
+                font: Some(f),
+                font_size: size as u16,
+                font_scale: 1.0,
+                font_scale_aspect: 1.0,
+                rotation: 0.0,
+                color,
+            },
+        );
+    } else {
+        draw_text(text, x, y, size, color);
+    }
+}
+
+fn draw_crisp_text_shadow(font: Option<&Font>, text: &str, x: f32, y: f32, size: f32, color: Color) {
+    draw_crisp_text(font, text, x + 1.2, y + 1.2, size, Color::new(0.07, 0.07, 0.11, 0.85));
+    draw_crisp_text(font, text, x, y, size, color);
+}
+
+fn measure_crisp_text(font: Option<&Font>, text: &str, size: f32) -> TextDimensions {
+    measure_text(text, font, size as u16, 1.0)
+}
+
+
 // --- Native & WASM Network Bridge ---
 #[cfg(target_arch = "wasm32")]
 mod net {
@@ -809,6 +870,9 @@ impl GameClient {
 // --- Main Macroquad Entry Point ---
 #[macroquad::main("AstroBrawl")]
 async fn main() {
+    let font_bytes = include_bytes!("../assets/Rajdhani-SemiBold.ttf");
+    let custom_font = load_ttf_font_from_bytes(font_bytes).ok();
+
     let mut game = GameClient::new();
 
     // Try connecting to backend WSS if available
@@ -1142,13 +1206,13 @@ async fn main() {
         draw_circle(base_sx, base_sy, 14.0, GOLD);
 
         let base_name = &game.space_base.name;
-        let bn_w = measure_text(base_name, None, 14, 1.0).width;
-        draw_text(base_name, base_sx - bn_w * 0.5, base_sy - 85.0, 14.0, SKYBLUE);
+        let bn_dim = measure_crisp_text(custom_font.as_ref(), base_name, 16.0);
+        draw_crisp_text_shadow(custom_font.as_ref(), base_name, base_sx - bn_dim.width * 0.5, base_sy - 85.0, 16.0, mocha::SKY);
 
         if game.local_ship.is_in_safe_zone {
-            let z_text = "🛡️ ZONE DE NON-AGRESSION • SÉCURITÉ ACTIVE [V: Vendre Soute | H: Hangar | C: Craft]";
-            let z_w = measure_text(z_text, None, 13, 1.0).width;
-            draw_text(z_text, base_sx - z_w * 0.5, base_sy + 95.0, 13.0, GREEN);
+            let z_text = "🛡️ ZONE DE NON-AGRESSION • SÉCURITÉ ACTIVE [V: Vente | H: Hangar | C: Craft]";
+            let zd = measure_crisp_text(custom_font.as_ref(), z_text, 14.0);
+            draw_crisp_text_shadow(custom_font.as_ref(), z_text, base_sx - zd.width * 0.5, base_sy + 95.0, 14.0, mocha::GREEN);
         }
 
         // 4. Portals & Event Rifts
@@ -1157,10 +1221,10 @@ async fn main() {
             let py = portal.position.y - game.camera_pos.y + half_screen.y;
 
             let (p_col, p_label) = match &portal.portal_type {
-                PortalType::MapJump { target_map, .. } => (Color::new(0.1, 0.7, 1.0, 0.8), target_map.name()),
+                PortalType::MapJump { target_map, .. } => (mocha::SAPPHIRE, target_map.name()),
                 PortalType::EventRift { event_type, .. } => {
                     let rgba = event_type.color_rgba();
-                    (Color::new(rgba[0], rgba[1], rgba[2], 0.85), event_type.name())
+                    (Color::new(rgba[0], rgba[1], rgba[2], 0.9), event_type.name())
                 }
             };
 
@@ -1176,13 +1240,13 @@ async fn main() {
                 draw_circle(arm_x, arm_y, 4.0, WHITE);
             }
 
-            let pl_w = measure_text(p_label, None, 13, 1.0).width;
-            draw_text(p_label, px - pl_w * 0.5, py - portal.radius - 12.0, 13.0, p_col);
+            let pld = measure_crisp_text(custom_font.as_ref(), p_label, 14.0);
+            draw_crisp_text_shadow(custom_font.as_ref(), p_label, px - pld.width * 0.5, py - portal.radius - 12.0, 14.0, p_col);
 
             if game.local_ship.position.distance_to(portal.position) <= portal.radius + 30.0 {
                 let jump_hint = "[J] ENTRER DANS LE PORTAIL";
-                let jh_w = measure_text(jump_hint, None, 14, 1.0).width;
-                draw_text(jump_hint, px - jh_w * 0.5, py + portal.radius + 20.0, 14.0, YELLOW);
+                let jhd = measure_crisp_text(custom_font.as_ref(), jump_hint, 15.0);
+                draw_crisp_text_shadow(custom_font.as_ref(), jump_hint, px - jhd.width * 0.5, py + portal.radius + 20.0, 15.0, mocha::YELLOW);
             }
         }
 
@@ -1252,12 +1316,12 @@ async fn main() {
 
             let size = 16.0;
             draw_rectangle(lx - size * 0.5, ly - size * 0.5, size, size, Color::new(0.1, 0.6, 0.9, 0.85));
-            draw_rectangle_lines(lx - size * 0.5, ly - size * 0.5, size, size, 2.0, GOLD);
+            draw_rectangle_lines(lx - size * 0.5, ly - size * 0.5, size, size, 2.0, mocha::YELLOW);
             draw_circle(lx, ly, 3.0, WHITE);
 
             let box_text = "📦 FRET";
-            let bw = measure_text(box_text, None, 11, 1.0).width;
-            draw_text(box_text, lx - bw * 0.5, ly - 14.0, 11.0, YELLOW);
+            let bwd = measure_crisp_text(custom_font.as_ref(), box_text, 12.0);
+            draw_crisp_text_shadow(custom_font.as_ref(), box_text, lx - bwd.width * 0.5, ly - 14.0, 12.0, mocha::YELLOW);
         }
 
         // 9. Lasers
@@ -1285,9 +1349,9 @@ async fn main() {
 
             let rot = alien.rotation;
             let (nose_len, side_len, alien_col) = match alien.alien_type {
-                AlienType::Streuner => (20.0, 16.0, RED),
-                AlienType::Lordakia => (26.0, 22.0, ORANGE),
-                AlienType::Sibelon => (44.0, 40.0, PURPLE),
+                AlienType::Streuner => (20.0, 16.0, mocha::RED),
+                AlienType::Lordakia => (26.0, 22.0, mocha::PEACH),
+                AlienType::Sibelon => (44.0, 40.0, mocha::MAUVE),
             };
 
             let nose = to_mq(Vec2::new(ax + rot.cos() * nose_len, ay + rot.sin() * nose_len));
@@ -1301,19 +1365,19 @@ async fn main() {
             let bar_w = side_len * 2.0;
             let bar_h = 3.5;
             let hp_pct = (alien.health / alien.max_health).clamp(0.0, 1.0);
-            draw_rectangle(ax - bar_w * 0.5, ay - side_len - 14.0, bar_w, bar_h, DARKGRAY);
-            draw_rectangle(ax - bar_w * 0.5, ay - side_len - 14.0, bar_w * hp_pct, bar_h, RED);
+            draw_rectangle(ax - bar_w * 0.5, ay - side_len - 14.0, bar_w, bar_h, mocha::SURFACE0);
+            draw_rectangle(ax - bar_w * 0.5, ay - side_len - 14.0, bar_w * hp_pct, bar_h, mocha::RED);
 
             let a_name = alien.alien_type.name();
-            let an_w = measure_text(a_name, None, 12, 1.0).width;
-            draw_text(a_name, ax - an_w * 0.5, ay - side_len - 18.0, 12.0, WHITE);
+            let and = measure_crisp_text(custom_font.as_ref(), a_name, 13.0);
+            draw_crisp_text_shadow(custom_font.as_ref(), a_name, ax - and.width * 0.5, ay - side_len - 18.0, 13.0, mocha::TEXT);
 
             // Draw Dark Orbit Target Lock Reticle
             if game.locked_target_id == Some(alien.id) {
                 let box_size = side_len * 2.5 + ((now * 8.0).sin() * 2.0);
                 let half_b = box_size * 0.5;
                 let bracket_len = 10.0;
-                let target_col = Color::new(1.0, 0.25, 0.25, 0.95);
+                let target_col = mocha::RED;
 
                 // 4 Corner Brackets
                 draw_line(ax - half_b, ay - half_b, ax - half_b + bracket_len, ay - half_b, 2.5, target_col);
@@ -1323,15 +1387,15 @@ async fn main() {
                 draw_line(ax + half_b, ay - half_b, ax + half_b, ay - half_b + bracket_len, 2.5, target_col);
 
                 draw_line(ax - half_b, ay + half_b, ax - half_b + bracket_len, ay + half_b, 2.5, target_col);
-                draw_line(ax - half_b, ay + half_b, ax - half_b, ay + half_b - bracket_len, 2.5, target_col);
+                draw_line(ax - half_b, ay + half_b, ax - half_b, ay - half_b + bracket_len, 2.5, target_col);
 
                 draw_line(ax + half_b, ay + half_b, ax + half_b - bracket_len, ay + half_b, 2.5, target_col);
                 draw_line(ax + half_b, ay + half_b, ax + half_b, ay + half_b - bracket_len, 2.5, target_col);
 
                 let dist_m = (game.local_ship.position.distance_to(alien.position)) as u32;
                 let lock_str = format!("🎯 CIBLE: {}m", dist_m);
-                let lw = measure_text(&lock_str, None, 12, 1.0).width;
-                draw_text(&lock_str, ax - lw * 0.5, ay + half_b + 16.0, 12.0, GOLD);
+                let ldim = measure_crisp_text(custom_font.as_ref(), &lock_str, 13.0);
+                draw_crisp_text_shadow(custom_font.as_ref(), &lock_str, ax - ldim.width * 0.5, ay + half_b + 18.0, 13.0, mocha::YELLOW);
             }
         }
 
@@ -1352,11 +1416,26 @@ async fn main() {
 
             draw_triangle(nose, left_wing, engine, Color::new(0.65, 0.15, 0.2, 1.0));
             draw_triangle(nose, right_wing, engine, Color::new(0.65, 0.15, 0.2, 1.0));
-            draw_triangle_lines(nose, left_wing, engine, 2.0, RED);
-            draw_triangle_lines(nose, right_wing, engine, 2.0, RED);
+            let uname = &player.username;
+            let u_dim = measure_crisp_text(custom_font.as_ref(), uname, 14.0);
+            let pb_w = (u_dim.width + 16.0).max(60.0);
+            let pb_x = px - pb_w * 0.5;
+            let pb_y = py + 26.0;
 
-            let name_w = measure_text(&player.username, None, 13, 1.0).width;
-            draw_text(&player.username, px - name_w * 0.5, py - 32.0, 13.0, WHITE);
+            // Health & Shield Bars Above Enemy Player
+            let p_bar_w = 48.0;
+            let p_bar_x = px - p_bar_w * 0.5;
+            let p_sh_p = (player.shield / player.max_shield).clamp(0.0, 1.0);
+            draw_rectangle(p_bar_x, py - 34.0, p_bar_w, 4.0, mocha::SURFACE0);
+            draw_rectangle(p_bar_x, py - 34.0, p_bar_w * p_sh_p, 4.0, mocha::SAPPHIRE);
+            let p_hp_p = (player.health / player.max_health).clamp(0.0, 1.0);
+            draw_rectangle(p_bar_x, py - 28.0, p_bar_w, 4.0, mocha::SURFACE0);
+            draw_rectangle(p_bar_x, py - 28.0, p_bar_w * p_hp_p, 4.0, mocha::RED);
+
+            // Pseudo Below Ship
+            draw_rectangle(pb_x, pb_y, pb_w, 20.0, Color::new(0.09, 0.09, 0.15, 0.88));
+            draw_rectangle_lines(pb_x, pb_y, pb_w, 20.0, 1.0, mocha::RED);
+            draw_crisp_text_shadow(custom_font.as_ref(), uname, px - u_dim.width * 0.5, pb_y + 14.0, 14.0, mocha::PEACH);
         }
 
         // 12. Local Player Ship (Always Rendered!)
@@ -1374,14 +1453,14 @@ async fn main() {
             if game.local_ship.is_thrusting {
                 let flame_len = 16.0 + ((now * 32.0).sin() * 4.0);
                 let flame_tip = to_mq(Vec2::new(sx + (rot + std::f32::consts::PI).cos() * (15.0 + flame_len), sy + (rot + std::f32::consts::PI).sin() * (15.0 + flame_len)));
-                draw_triangle(left_wing * 0.4 + engine * 0.6, flame_tip, right_wing * 0.4 + engine * 0.6, ORANGE);
+                draw_triangle(left_wing * 0.4 + engine * 0.6, flame_tip, right_wing * 0.4 + engine * 0.6, mocha::PEACH);
             }
 
             let (hull_col, border_col) = match game.local_ship.ship_class {
-                ShipClass::Combat => (Color::new(0.06, 0.45, 0.75, 1.0), SKYBLUE),
-                ShipClass::Minier => (Color::new(0.75, 0.45, 0.08, 1.0), GOLD),
-                ShipClass::Transport => (Color::new(0.2, 0.35, 0.6, 1.0), BLUE),
-                ShipClass::Exploration => (Color::new(0.08, 0.6, 0.35, 1.0), GREEN),
+                ShipClass::Combat => (Color::new(0.12, 0.28, 0.52, 1.0), mocha::BLUE),
+                ShipClass::Minier => (Color::new(0.55, 0.42, 0.15, 1.0), mocha::YELLOW),
+                ShipClass::Transport => (Color::new(0.48, 0.28, 0.18, 1.0), mocha::PEACH),
+                ShipClass::Exploration => (Color::new(0.18, 0.45, 0.32, 1.0), mocha::GREEN),
             };
 
             draw_triangle(nose, left_wing, engine, hull_col);
@@ -1391,33 +1470,50 @@ async fn main() {
 
             // Cockpit glass
             let cockpit = Vec2::new(sx + rot.cos() * 7.0, sy + rot.sin() * 7.0);
-            draw_circle(cockpit.x, cockpit.y, 4.2, Color::new(0.2, 0.95, 1.0, 0.95));
+            draw_circle(cockpit.x, cockpit.y, 4.2, mocha::SAPPHIRE);
 
             // Mining pods if Minier
             if game.local_ship.ship_class == ShipClass::Minier {
                 let pod1 = Vec2::new(sx + (rot + 1.6).cos() * 16.0, sy + (rot + 1.6).sin() * 16.0);
                 let pod2 = Vec2::new(sx + (rot - 1.6).cos() * 16.0, sy + (rot - 1.6).sin() * 16.0);
-                draw_circle(pod1.x, pod1.y, 4.0, GOLD);
-                draw_circle(pod2.x, pod2.y, 4.0, GOLD);
+                draw_circle(pod1.x, pod1.y, 4.0, mocha::YELLOW);
+                draw_circle(pod2.x, pod2.y, 4.0, mocha::YELLOW);
             }
 
-            // Player Name & Title
-            let p_name = format!("{} [{}]", game.local_ship.username, game.local_ship.ship_class.name());
-            let nw = measure_text(&p_name, None, 13, 1.0).width;
-            draw_text(&p_name, sx - nw * 0.5, sy - 36.0, 13.0, GOLD);
-
-            // Shield & HP Bars
-            let bar_w = 48.0;
-            let bar_h = 4.0;
+            // Shield & HP Bars ABOVE Ship
+            let bar_w = 54.0;
+            let bar_h = 4.5;
             let bar_x = sx - bar_w * 0.5;
 
             let shield_pct = (game.local_ship.shield / game.local_ship.max_shield).clamp(0.0, 1.0);
-            draw_rectangle(bar_x, sy - 30.0, bar_w, bar_h, Color::new(0.05, 0.1, 0.2, 0.8));
-            draw_rectangle(bar_x, sy - 30.0, bar_w * shield_pct, bar_h, Color::new(0.0, 0.85, 1.0, 1.0));
+            draw_rectangle(bar_x, sy - 34.0, bar_w, bar_h, mocha::SURFACE0);
+            draw_rectangle(bar_x, sy - 34.0, bar_w * shield_pct, bar_h, mocha::SAPPHIRE);
 
             let hp_pct = (game.local_ship.health / game.local_ship.max_health).clamp(0.0, 1.0);
-            draw_rectangle(bar_x, sy - 24.0, bar_w, bar_h, Color::new(0.2, 0.05, 0.05, 0.8));
-            draw_rectangle(bar_x, sy - 24.0, bar_w * hp_pct, bar_h, Color::new(0.1, 0.95, 0.3, 1.0));
+            draw_rectangle(bar_x, sy - 27.0, bar_w, bar_h, mocha::SURFACE0);
+            draw_rectangle(bar_x, sy - 27.0, bar_w * hp_pct, bar_h, mocha::GREEN);
+
+            // PSEUDO DU JOUEUR EN DESSOUS DU VAISSEAU (Demandé par l'utilisateur)
+            let raw_username = if game.local_ship.username.is_empty() {
+                "Commandant".to_string()
+            } else {
+                game.local_ship.username.clone()
+            };
+            let class_tag = format!("Lv.{} • {}", game.local_ship.level, game.local_ship.ship_class.name());
+
+            let u_dim = measure_crisp_text(custom_font.as_ref(), &raw_username, 16.0);
+            let t_dim = measure_crisp_text(custom_font.as_ref(), &class_tag, 12.0);
+            let badge_w = (u_dim.width.max(t_dim.width) + 20.0).max(74.0);
+            let badge_h = 32.0;
+            let badge_x = sx - badge_w * 0.5;
+            let badge_y = sy + 28.0;
+
+            // Catppuccin Mocha Mantle Badge
+            draw_rectangle(badge_x, badge_y, badge_w, badge_h, Color::new(0.09, 0.09, 0.15, 0.90));
+            draw_rectangle_lines(badge_x, badge_y, badge_w, badge_h, 1.0, mocha::SURFACE1);
+
+            draw_crisp_text_shadow(custom_font.as_ref(), &raw_username, sx - u_dim.width * 0.5, badge_y + 15.0, 16.0, mocha::TEXT);
+            draw_crisp_text(custom_font.as_ref(), &class_tag, sx - t_dim.width * 0.5, badge_y + 27.0, 12.0, mocha::MAUVE);
         }
 
         // 13. Particles & Floating Texts
@@ -1435,85 +1531,90 @@ async fn main() {
             let sy = ft.pos.y - game.camera_pos.y + half_screen.y;
             let mut col = ft.color;
             col.a = (ft.lifetime / 1.6).clamp(0.0, 1.0);
-            draw_text(&ft.text, sx, sy, 15.0, col);
+            draw_crisp_text_shadow(custom_font.as_ref(), &ft.text, sx, sy, 16.0, col);
         }
 
-        // 14. Top Sci-Fi HUD
-        let hud_w = 780.0_f32.min(screen_width() - 40.0);
+        // 14. Top Sci-Fi HUD (Catppuccin Mocha)
+        let hud_w = 840.0_f32.min(screen_width() - 32.0);
         let hud_h = 44.0;
         let hud_x = (screen_width() - hud_w) * 0.5;
         let hud_y = 12.0;
 
-        draw_rectangle(hud_x, hud_y, hud_w, hud_h, Color::new(0.04, 0.07, 0.14, 0.92));
-        draw_rectangle_lines(hud_x, hud_y, hud_w, hud_h, 1.5, Color::new(0.0, 0.9, 1.0, 0.4));
+        draw_rectangle(hud_x, hud_y, hud_w, hud_h, Color::new(0.09, 0.09, 0.15, 0.94));
+        draw_rectangle_lines(hud_x, hud_y, hud_w, hud_h, 1.5, mocha::SURFACE1);
 
         let credits_str = format!("💰 Crédits: {}", game.local_ship.credits);
-        draw_text(&credits_str, hud_x + 16.0, hud_y + 27.0, 14.0, GOLD);
+        draw_crisp_text_shadow(custom_font.as_ref(), &credits_str, hud_x + 18.0, hud_y + 27.0, 16.0, mocha::YELLOW);
 
         let cargo_used = game.local_ship.cargo.used_capacity();
         let cargo_max = game.local_ship.cargo.max_capacity;
-        let cargo_col = if game.local_ship.cargo.is_full() { RED } else { SKYBLUE };
+        let cargo_col = if game.local_ship.cargo.is_full() { mocha::RED } else { mocha::SAPPHIRE };
         let cargo_str = format!("📦 Soute: {} / {} kg", cargo_used, cargo_max);
-        draw_text(&cargo_str, hud_x + 175.0, hud_y + 27.0, 14.0, cargo_col);
+        draw_crisp_text_shadow(custom_font.as_ref(), &cargo_str, hud_x + 200.0, hud_y + 27.0, 16.0, cargo_col);
 
         let level_str = format!("⭐ Lv. {} ({} / {} XP)", game.local_ship.level, game.local_ship.xp, game.local_ship.next_level_xp);
-        draw_text(&level_str, hud_x + 355.0, hud_y + 27.0, 14.0, Color::new(0.2, 1.0, 0.5, 1.0));
+        draw_crisp_text_shadow(custom_font.as_ref(), &level_str, hud_x + 400.0, hud_y + 27.0, 16.0, mocha::GREEN);
 
         let map_str = format!("🌐 {}", game.current_map.name());
-        draw_text(&map_str, hud_x + 555.0, hud_y + 27.0, 13.0, Color::new(0.7, 0.85, 1.0, 0.9));
+        draw_crisp_text_shadow(custom_font.as_ref(), &map_str, hud_x + 630.0, hud_y + 27.0, 15.0, mocha::LAVENDER);
 
         // 15. Notification Banner
         if game.notification_timer > 0.0 {
-            let nw = measure_text(&game.notification_text, None, 14, 1.0).width;
-            let nx = (screen_width() - nw - 40.0) * 0.5;
-            draw_rectangle(nx, 64.0, nw + 40.0, 30.0, Color::new(0.05, 0.1, 0.2, 0.9));
-            draw_rectangle_lines(nx, 64.0, nw + 40.0, 30.0, 1.5, SKYBLUE);
-            draw_text(&game.notification_text, nx + 20.0, 84.0, 14.0, WHITE);
+            let nd = measure_crisp_text(custom_font.as_ref(), &game.notification_text, 15.0);
+            let nw = nd.width;
+            let nx = (screen_width() - nw - 48.0) * 0.5;
+            draw_rectangle(nx, 64.0, nw + 48.0, 32.0, Color::new(0.09, 0.09, 0.15, 0.95));
+            draw_rectangle_lines(nx, 64.0, nw + 48.0, 32.0, 1.5, mocha::SAPPHIRE);
+            draw_crisp_text_shadow(custom_font.as_ref(), &game.notification_text, nx + 24.0, 85.0, 15.0, mocha::TEXT);
         }
 
-        // Target Info Box in HUD
+        // Target Info Box in HUD (Catppuccin Mocha)
         if let Some(target_id) = game.locked_target_id {
             if let Some(alien) = game.aliens.iter().find(|a| a.id == target_id && a.health > 0.0) {
-                let tw = 250.0;
-                let th = 56.0;
+                let tw = 280.0;
+                let th = 66.0;
                 let tx = screen_width() - tw - 20.0;
                 let ty = 66.0;
 
-                draw_rectangle(tx, ty, tw, th, Color::new(0.05, 0.08, 0.16, 0.92));
-                draw_rectangle_lines(tx, ty, tw, th, 1.5, RED);
+                draw_rectangle(tx, ty, tw, th, Color::new(0.09, 0.09, 0.15, 0.94));
+                draw_rectangle_lines(tx, ty, tw, th, 1.5, mocha::RED);
 
                 let dist_m = game.local_ship.position.distance_to(alien.position) as u32;
-                draw_text(&format!("🎯 {} ({}m)", alien.alien_type.name(), dist_m), tx + 10.0, ty + 18.0, 13.0, GOLD);
+                let t_title = format!("🎯 {} ({}m)", alien.alien_type.name(), dist_m);
+                draw_crisp_text_shadow(custom_font.as_ref(), &t_title, tx + 12.0, ty + 20.0, 15.0, mocha::RED);
 
                 let hp_p = (alien.health / alien.max_health).clamp(0.0, 1.0);
-                draw_rectangle(tx + 10.0, ty + 24.0, 230.0, 8.0, DARKGRAY);
-                draw_rectangle(tx + 10.0, ty + 24.0, 230.0 * hp_p, 8.0, RED);
+                draw_rectangle(tx + 12.0, ty + 28.0, 256.0, 9.0, mocha::SURFACE0);
+                draw_rectangle(tx + 12.0, ty + 28.0, 256.0 * hp_p, 9.0, mocha::RED);
 
                 let sh_p = (alien.shield / alien.max_shield).clamp(0.0, 1.0);
-                draw_rectangle(tx + 10.0, ty + 36.0, 230.0, 6.0, Color::new(0.0, 0.2, 0.4, 0.8));
-                draw_rectangle(tx + 10.0, ty + 36.0, 230.0 * sh_p, 6.0, SKYBLUE);
+                draw_rectangle(tx + 12.0, ty + 41.0, 256.0, 7.0, mocha::SURFACE0);
+                draw_rectangle(tx + 12.0, ty + 41.0, 256.0 * sh_p, 7.0, mocha::SAPPHIRE);
+
+                let hp_txt = format!("{:.0} / {:.0} PV", alien.health, alien.max_health);
+                draw_crisp_text(custom_font.as_ref(), &hp_txt, tx + 12.0, ty + 59.0, 11.0, mocha::SUBTEXT0);
             }
         }
 
-        // 16. Radar Minimap
+        // 16. Radar Minimap (Catppuccin Mocha)
         let radar_size = 145.0;
         let rx = screen_width() - radar_size - 18.0;
         let ry = screen_height() - radar_size - 18.0;
 
-        draw_rectangle(rx, ry, radar_size, radar_size, Color::new(0.03, 0.06, 0.12, 0.88));
-        draw_rectangle_lines(rx, ry, radar_size, radar_size, 1.5, Color::new(0.0, 0.9, 1.0, 0.5));
+        draw_rectangle(rx, ry, radar_size, radar_size, Color::new(0.09, 0.09, 0.15, 0.90));
+        draw_rectangle_lines(rx, ry, radar_size, radar_size, 1.5, mocha::SURFACE1);
 
         let radar_scale = radar_size / WORLD_WIDTH;
         let radar_center = Vec2::new(rx + radar_size * 0.5, ry + radar_size * 0.5);
 
         // Safe Base on Radar
-        draw_circle_lines(radar_center.x, radar_center.y, game.space_base.radius * radar_scale, 1.0, Color::new(0.0, 0.8, 1.0, 0.4));
+        draw_circle_lines(radar_center.x, radar_center.y, game.space_base.radius * radar_scale, 1.0, mocha::SKY);
 
         // Minerals on Radar
         for m in &game.minerals {
             let mx = radar_center.x + m.position.x * radar_scale;
             let my = radar_center.y + m.position.y * radar_scale;
-            draw_circle(mx, my, 1.2, Color::new(0.2, 0.9, 1.0, 0.6));
+            draw_circle(mx, my, 1.2, mocha::SAPPHIRE);
         }
 
         // Aliens on Radar
@@ -1521,11 +1622,11 @@ async fn main() {
             if a.health > 0.0 {
                 let ax = radar_center.x + a.position.x * radar_scale;
                 let ay = radar_center.y + a.position.y * radar_scale;
-                draw_circle(ax, ay, 2.0, RED);
+                draw_circle(ax, ay, 2.0, mocha::RED);
 
                 if game.locked_target_id == Some(a.id) {
                     let ring_pulse = ((now * 10.0).sin() * 2.0 + 5.0).abs();
-                    draw_circle_lines(ax, ay, ring_pulse, 1.5, GOLD);
+                    draw_circle_lines(ax, ay, ring_pulse, 1.5, mocha::YELLOW);
                 }
             }
         }
@@ -1534,100 +1635,243 @@ async fn main() {
         for lb in &game.loot_boxes {
             let lx = radar_center.x + lb.position.x * radar_scale;
             let ly = radar_center.y + lb.position.y * radar_scale;
-            draw_circle(lx, ly, 2.2, GOLD);
+            draw_circle(lx, ly, 2.2, mocha::PEACH);
         }
 
         // Player on Radar
         let px = radar_center.x + game.local_ship.position.x * radar_scale;
         let py = radar_center.y + game.local_ship.position.y * radar_scale;
-        draw_circle(px, py, 3.2, GREEN);
+        draw_circle(px, py, 3.2, mocha::GREEN);
 
         // Radar Sweep Line
         let sweep_a = now * 2.2;
-        draw_line(radar_center.x, radar_center.y, radar_center.x + sweep_a.cos() * (radar_size * 0.5), radar_center.y + sweep_a.sin() * (radar_size * 0.5), 1.0, Color::new(0.0, 1.0, 0.8, 0.3));
+        draw_line(radar_center.x, radar_center.y, radar_center.x + sweep_a.cos() * (radar_size * 0.5), radar_center.y + sweep_a.sin() * (radar_size * 0.5), 1.0, Color::new(0.58, 0.89, 0.84, 0.4));
 
-        // 17. Quick Commands Help & Shortcuts
-        draw_rectangle(16.0, screen_height() - 110.0, 360.0, 94.0, Color::new(0.04, 0.07, 0.12, 0.85));
-        draw_rectangle_lines(16.0, screen_height() - 110.0, 360.0, 94.0, 1.0, Color::new(0.0, 0.9, 1.0, 0.3));
-        draw_text("⚡ ASTROBRAWL RACCOURCIS :", 26.0, screen_height() - 92.0, 12.0, SKYBLUE);
-        draw_text("• [Z Q S D] Déplacement 8-directions  • [Espace / Clic G] Tirer", 26.0, screen_height() - 76.0, 11.0, WHITE);
-        draw_text("• [TAB] Ciblage auto (proche/cycle)  • [Échap] Déverrouiller", 26.0, screen_height() - 60.0, 11.0, GOLD);
-        draw_text("• [E] Laser Minier  • [H] Hangar  • [T] Talents  • [C] Craft  • [V] Vente", 26.0, screen_height() - 44.0, 11.0, GREEN);
-        draw_text("• [J] Saut Portail / Faille cosmique", 26.0, screen_height() - 28.0, 11.0, SKYBLUE);
+        // 17. Quick Commands Help & Shortcuts Box (Catppuccin Mocha)
+        let q_w = 440.0;
+        let q_h = 100.0;
+        let q_x = 16.0;
+        let q_y = screen_height() - q_h - 16.0;
 
-        // 18. Modals (Hangar, Talents, Crafting)
+        draw_rectangle(q_x, q_y, q_w, q_h, Color::new(0.09, 0.09, 0.15, 0.92));
+        draw_rectangle_lines(q_x, q_y, q_w, q_h, 1.2, mocha::SURFACE1);
+
+        draw_crisp_text_shadow(custom_font.as_ref(), "⚡ COMMANDES & RACCOURCIS ASTROBRAWL", q_x + 14.0, q_y + 22.0, 15.0, mocha::MAUVE);
+        draw_crisp_text(custom_font.as_ref(), "• [Z Q S D] Déplacement direct  • [Espace / Clic G] Tirer", q_x + 14.0, q_y + 42.0, 13.0, mocha::TEXT);
+        draw_crisp_text(custom_font.as_ref(), "• [TAB] Ciblage auto ennemi proche  • [Échap] Déverrouiller", q_x + 14.0, q_y + 60.0, 13.0, mocha::SAPPHIRE);
+        draw_crisp_text(custom_font.as_ref(), "• [E] Laser Minier  • [H] Hangar  • [T] Talents  • [C] Craft  • [V] Vente", q_x + 14.0, q_y + 78.0, 13.0, mocha::PEACH);
+        draw_crisp_text(custom_font.as_ref(), "• [J] Saut Portail / Faille cosmique", q_x + 14.0, q_y + 94.0, 12.0, mocha::TEAL);
+
+        // 18. Modals (Hangar, Talents, Crafting) - Catppuccin Mocha Overhaul
+        let (mouse_x, mouse_y) = mouse_position();
+        let mouse_clicked = is_mouse_button_pressed(MouseButton::Left);
+
         match game.active_modal {
             ActiveModal::Hangar => {
-                let mw = 520.0;
-                let mh = 360.0;
+                // Fullscreen Backdrop Dimming
+                draw_rectangle(0.0, 0.0, screen_width(), screen_height(), Color::new(0.07, 0.07, 0.11, 0.88));
+
+                let mw = 760.0_f32.min(screen_width() - 40.0);
+                let mh = 530.0_f32.min(screen_height() - 40.0);
                 let mx = (screen_width() - mw) * 0.5;
                 let my = (screen_height() - mh) * 0.5;
 
-                draw_rectangle(mx, my, mw, mh, Color::new(0.05, 0.08, 0.16, 0.96));
-                draw_rectangle_lines(mx, my, mw, mh, 2.0, SKYBLUE);
-                draw_text("🚀 HANGAR DE SÉLECTION DU VAISSEAU", mx + 24.0, my + 38.0, 20.0, GOLD);
-                draw_text("Appuyez sur 1, 2, 3 ou 4 pour changer de classe :", mx + 24.0, my + 65.0, 13.0, WHITE);
+                // Modal Container Frame
+                draw_rectangle(mx, my, mw, mh, mocha::BASE);
+                draw_rectangle_lines(mx, my, mw, mh, 2.0, mocha::MAUVE);
+
+                // Header Bar
+                draw_rectangle(mx, my, mw, 54.0, mocha::MANTLE);
+                draw_line(mx, my + 54.0, mx + mw, my + 54.0, 1.5, mocha::SURFACE1);
+                draw_crisp_text_shadow(custom_font.as_ref(), "🚀 HANGAR SPATIAL • CHOIX DU VAISSEAU", mx + 22.0, my + 34.0, 21.0, mocha::TEXT);
+
+                // Close Button in Header
+                let close_btn_x = mx + mw - 100.0;
+                let close_btn_y = my + 14.0;
+                let close_hover = mouse_x >= close_btn_x && mouse_x <= close_btn_x + 85.0 && mouse_y >= close_btn_y && mouse_y <= close_btn_y + 26.0;
+                draw_rectangle(close_btn_x, close_btn_y, 85.0, 26.0, if close_hover { mocha::SURFACE1 } else { mocha::SURFACE0 });
+                draw_rectangle_lines(close_btn_x, close_btn_y, 85.0, 26.0, 1.0, if close_hover { mocha::RED } else { mocha::SURFACE2 });
+                draw_crisp_text(custom_font.as_ref(), "✕ ÉCHAP", close_btn_x + 18.0, close_btn_y + 18.0, 13.0, mocha::TEXT);
+                if close_hover && mouse_clicked {
+                    game.active_modal = ActiveModal::None;
+                }
 
                 let classes = [
-                    (KeyCode::Key1, ShipClass::Combat, "1. Intercepteur de Combat", "Canons surchargés (+32 dmg), grande agilité. Ne peut pas miner."),
-                    (KeyCode::Key2, ShipClass::Minier, "2. Extracteur Minier", "Équipé du Laser de Forage thermique. Seul capable de miner ! (+300 kg soute)"),
-                    (KeyCode::Key3, ShipClass::Transport, "3. Mastodonte Cargo", "Blindage massif (+260 HP, +240 bouclier), soute titanesque (1000 kg)."),
-                    (KeyCode::Key4, ShipClass::Exploration, "4. Éclaireur Longue Portée", "Vitesse suprême (480 px/s), radar étendu pour détecter les failles."),
+                    (KeyCode::Key1, "1", ShipClass::Combat, "1. Intercepteur de Combat", "Canons surchargés, cadence soutenue et grande agilité de combat. Non équipé pour le minage.", "⚡ Vitesse: 380 px/s  •  💥 Dégâts: +32 (Laser Pulsé)  •  🛡️ Bouclier: 150  •  📦 Soute: 100 kg", mocha::BLUE),
+                    (KeyCode::Key2, "2", ShipClass::Minier, "2. Extracteur Minier", "Équipé du Laser de Forage thermique rotatif. Seule classe capable de récolter les minerais spatiaux.", "⚡ Vitesse: 310 px/s  •  ⛏️ Laser de Forage  •  🛡️ Bouclier: 180  •  📦 Soute: 300 kg", mocha::YELLOW),
+                    (KeyCode::Key3, "3", ShipClass::Transport, "3. Mastodonte Cargo", "Blindage composite lourd et coque renforcée. Conçu pour le transport massif et le commerce.", "⚡ Vitesse: 240 px/s  •  🛡️ Bouclier: 320  •  ❤️ HP: 360  •  📦 Soute Titanesque: 1000 kg", mocha::PEACH),
+                    (KeyCode::Key4, "4", ShipClass::Exploration, "4. Éclaireur Longue Portée", "Propulseur à impulsion avancée. Vitesse suprême pour cartographier les secteurs et failles cosmiques.", "⚡ Vitesse: 480 px/s  •  📡 Radar Étendu  •  🛡️ Bouclier: 160  •  📦 Soute: 150 kg", mocha::GREEN),
                 ];
 
-                for (idx, (key, class, title, desc)) in classes.iter().enumerate() {
-                    let card_y = my + 90.0 + (idx as f32 * 60.0);
-                    let is_active = game.local_ship.ship_class == *class;
-                    let bg_col = if is_active { Color::new(0.1, 0.3, 0.5, 0.8) } else { Color::new(0.08, 0.12, 0.22, 0.6) };
-                    draw_rectangle(mx + 20.0, card_y, mw - 40.0, 52.0, bg_col);
-                    draw_rectangle_lines(mx + 20.0, card_y, mw - 40.0, 52.0, 1.0, if is_active { GOLD } else { DARKGRAY });
-                    draw_text(title, mx + 32.0, card_y + 22.0, 14.0, if is_active { GOLD } else { WHITE });
-                    draw_text(desc, mx + 32.0, card_y + 40.0, 11.0, GRAY);
+                for (idx, (key, key_str, class, title, desc, stats, accent_col)) in classes.iter().enumerate() {
+                    let card_y = my + 68.0 + (idx as f32 * 105.0);
+                    let card_h = 94.0;
+                    let card_w = mw - 40.0;
+                    let card_x = mx + 20.0;
 
-                    if is_key_pressed(*key) {
+                    let is_active = game.local_ship.ship_class == *class;
+                    let is_hovered = mouse_x >= card_x && mouse_x <= card_x + card_w && mouse_y >= card_y && mouse_y <= card_y + card_h;
+
+                    let bg_col = if is_active {
+                        Color::new(0.19, 0.20, 0.27, 0.95) // surface0
+                    } else if is_hovered {
+                        Color::new(0.15, 0.15, 0.22, 0.95)
+                    } else {
+                        Color::new(0.09, 0.09, 0.15, 0.90) // mantle
+                    };
+
+                    draw_rectangle(card_x, card_y, card_w, card_h, bg_col);
+                    draw_rectangle_lines(card_x, card_y, card_w, card_h, if is_active { 2.0 } else { 1.0 }, if is_active { mocha::GREEN } else if is_hovered { *accent_col } else { mocha::SURFACE0 });
+
+                    // Left Accent Stripe
+                    draw_rectangle(card_x, card_y, 6.0, card_h, *accent_col);
+
+                    // Key Badge Pill [ 1 ]
+                    let kb_x = card_x + 18.0;
+                    let kb_y = card_y + 14.0;
+                    draw_rectangle(kb_x, kb_y, 34.0, 26.0, mocha::CRUST);
+                    draw_rectangle_lines(kb_x, kb_y, 34.0, 26.0, 1.0, mocha::SURFACE2);
+                    draw_crisp_text(custom_font.as_ref(), key_str, kb_x + 12.0, kb_y + 18.0, 15.0, mocha::TEXT);
+
+                    // Title
+                    draw_crisp_text_shadow(custom_font.as_ref(), title, card_x + 62.0, card_y + 26.0, 17.0, if is_active { mocha::GREEN } else { mocha::TEXT });
+
+                    // Equipped status / select button
+                    if is_active {
+                        let eq_w = 90.0;
+                        let eq_x = card_x + card_w - eq_w - 16.0;
+                        draw_rectangle(eq_x, card_y + 14.0, eq_w, 24.0, Color::new(0.65, 0.89, 0.63, 0.2));
+                        draw_rectangle_lines(eq_x, card_y + 14.0, eq_w, 24.0, 1.0, mocha::GREEN);
+                        draw_crisp_text(custom_font.as_ref(), "✓ ÉQUIPÉ", eq_x + 18.0, card_y + 30.0, 13.0, mocha::GREEN);
+                    } else {
+                        let sel_w = 115.0;
+                        let sel_x = card_x + card_w - sel_w - 16.0;
+                        draw_rectangle(sel_x, card_y + 14.0, sel_w, 24.0, mocha::SURFACE0);
+                        draw_rectangle_lines(sel_x, card_y + 14.0, sel_w, 24.0, 1.0, if is_hovered { *accent_col } else { mocha::SURFACE1 });
+                        draw_crisp_text(custom_font.as_ref(), "CHOISIR [Clic]", sel_x + 16.0, card_y + 30.0, 12.0, mocha::SUBTEXT1);
+                    }
+
+                    // Description & Stats
+                    draw_crisp_text(custom_font.as_ref(), desc, card_x + 22.0, card_y + 54.0, 14.0, mocha::SUBTEXT1);
+                    draw_crisp_text(custom_font.as_ref(), stats, card_x + 22.0, card_y + 78.0, 13.0, *accent_col);
+
+                    if (is_key_pressed(*key) || (is_hovered && mouse_clicked)) && !is_active {
                         game.local_ship.ship_class = *class;
                         game.local_ship.max_health = class.base_health();
                         game.local_ship.health = class.base_health();
                         game.local_ship.max_shield = class.base_shield();
                         game.local_ship.shield = class.base_shield();
                         game.local_ship.apply_talent_bonuses();
-                        game.spawn_float_text(format!("🚀 Vaisseau équipé : {}", class.name()), game.local_ship.position, SKYBLUE);
+                        game.spawn_float_text(format!("🚀 Vaisseau équipé : {}", class.name()), game.local_ship.position, mocha::GREEN);
                         game.send_message(&ClientMessage::SelectClass { class: *class });
                     }
                 }
 
-                draw_text("[H ou Échap pour fermer le hangar]", mx + 130.0, my + mh - 16.0, 12.0, SKYBLUE);
+                draw_crisp_text(custom_font.as_ref(), "Appuyez sur [1, 2, 3, 4], cliquez sur un vaisseau ou appuyez sur [Échap] pour fermer", mx + 110.0, my + mh - 16.0, 13.0, mocha::OVERLAY1);
             }
             ActiveModal::Talents => {
-                let mw = 560.0;
-                let mh = 380.0;
+                // Fullscreen Backdrop Dimming
+                draw_rectangle(0.0, 0.0, screen_width(), screen_height(), Color::new(0.07, 0.07, 0.11, 0.88));
+
+                let mw = 760.0_f32.min(screen_width() - 40.0);
+                let mh = 530.0_f32.min(screen_height() - 40.0);
                 let mx = (screen_width() - mw) * 0.5;
                 let my = (screen_height() - mh) * 0.5;
 
-                draw_rectangle(mx, my, mw, mh, Color::new(0.05, 0.08, 0.16, 0.96));
-                draw_rectangle_lines(mx, my, mw, mh, 2.0, Color::new(0.2, 1.0, 0.5, 1.0));
-                draw_text("🧬 ARBRE DE TALENTS DU PILOTE", mx + 24.0, my + 38.0, 20.0, Color::new(0.2, 1.0, 0.5, 1.0));
-                draw_text(&format!("Points de compétence disponibles : {}", game.local_ship.talent_points), mx + 24.0, my + 65.0, 14.0, GOLD);
+                draw_rectangle(mx, my, mw, mh, mocha::BASE);
+                draw_rectangle_lines(mx, my, mw, mh, 2.0, mocha::GREEN);
+
+                // Header Bar
+                draw_rectangle(mx, my, mw, 54.0, mocha::MANTLE);
+                draw_line(mx, my + 54.0, mx + mw, my + 54.0, 1.5, mocha::SURFACE1);
+                draw_crisp_text_shadow(custom_font.as_ref(), "🧬 ARBRE DE TALENTS DU COMMANDANT", mx + 22.0, my + 34.0, 21.0, mocha::TEXT);
+
+                let pts_str = format!("⭐ Points disponibles : {}", game.local_ship.talent_points);
+                draw_crisp_text_shadow(custom_font.as_ref(), &pts_str, mx + 380.0, my + 34.0, 16.0, mocha::YELLOW);
+
+                // Close Button in Header
+                let close_btn_x = mx + mw - 100.0;
+                let close_btn_y = my + 14.0;
+                let close_hover = mouse_x >= close_btn_x && mouse_x <= close_btn_x + 85.0 && mouse_y >= close_btn_y && mouse_y <= close_btn_y + 26.0;
+                draw_rectangle(close_btn_x, close_btn_y, 85.0, 26.0, if close_hover { mocha::SURFACE1 } else { mocha::SURFACE0 });
+                draw_rectangle_lines(close_btn_x, close_btn_y, 85.0, 26.0, 1.0, if close_hover { mocha::RED } else { mocha::SURFACE2 });
+                draw_crisp_text(custom_font.as_ref(), "✕ ÉCHAP", close_btn_x + 18.0, close_btn_y + 18.0, 13.0, mocha::TEXT);
+                if close_hover && mouse_clicked {
+                    game.active_modal = ActiveModal::None;
+                }
 
                 let talents_data = [
-                    (KeyCode::Key1, 0, "1. Optique Laser (+6% Dégâts)", game.local_ship.talents.combat_laser_dmg),
-                    (KeyCode::Key2, 1, "2. Surchauffeur (+5% Cadence)", game.local_ship.talents.combat_fire_rate),
-                    (KeyCode::Key3, 2, "3. Condensateur Bouclier (+10% Bouclier Max)", game.local_ship.talents.defense_shield_max),
-                    (KeyCode::Key4, 3, "4. Nano-Réparateur (+15% Régénération)", game.local_ship.talents.defense_regen),
-                    (KeyCode::Key5, 4, "5. Soute Compressée (+20% Capacité Soute)", game.local_ship.talents.logistics_cargo),
-                    (KeyCode::Key6, 5, "6. Foreuse Thermique (+25% Vitesse Minage)", game.local_ship.talents.logistics_mining_speed),
+                    (KeyCode::Key1, "1", 0, "Optique Laser Amplifiée", "+6% Dégâts laser supplémentaires par rang", game.local_ship.talents.combat_laser_dmg),
+                    (KeyCode::Key2, "2", 1, "Surchauffeur de Flux", "+5% Cadence de tir soutenue par rang", game.local_ship.talents.combat_fire_rate),
+                    (KeyCode::Key3, "3", 2, "Condensateur de Bouclier", "+10% Capacité maximale de bouclier par rang", game.local_ship.talents.defense_shield_max),
+                    (KeyCode::Key4, "4", 3, "Nano-Réparateur de Bord", "+15% Vitesse de régénération passive du bouclier", game.local_ship.talents.defense_regen),
+                    (KeyCode::Key5, "5", 4, "Soute Compressée Quantum", "+20% Capacité maximale de la soute en kg", game.local_ship.talents.logistics_cargo),
+                    (KeyCode::Key6, "6", 5, "Foreuse Thermique Avancée", "+25% Vitesse d'extraction des minerais", game.local_ship.talents.logistics_mining_speed),
                 ];
 
-                for (idx, (key, talent_idx, title, level)) in talents_data.iter().enumerate() {
-                    let ty = my + 90.0 + (idx as f32 * 42.0);
-                    draw_rectangle(mx + 20.0, ty, mw - 40.0, 36.0, Color::new(0.08, 0.12, 0.22, 0.7));
-                    draw_rectangle_lines(mx + 20.0, ty, mw - 40.0, 36.0, 1.0, DARKGRAY);
+                for (idx, (key, key_str, talent_idx, title, desc, level)) in talents_data.iter().enumerate() {
+                    let card_y = my + 68.0 + (idx as f32 * 68.0);
+                    let card_h = 58.0;
+                    let card_w = mw - 40.0;
+                    let card_x = mx + 20.0;
 
-                    draw_text(title, mx + 32.0, ty + 23.0, 13.0, WHITE);
-                    draw_text(&format!("Niveau : {} / 5", level), mx + 380.0, ty + 23.0, 13.0, SKYBLUE);
-                    draw_text("[+]", mx + mw - 60.0, ty + 23.0, 13.0, GREEN);
+                    let can_upgrade = game.local_ship.talent_points > 0 && *level < 5;
+                    let is_max = *level >= 5;
+                    let is_hovered = mouse_x >= card_x && mouse_x <= card_x + card_w && mouse_y >= card_y && mouse_y <= card_y + card_h;
 
-                    if is_key_pressed(*key) && game.local_ship.talent_points > 0 && *level < 5 {
+                    let bg_col = if is_hovered && can_upgrade {
+                        Color::new(0.18, 0.22, 0.30, 0.95)
+                    } else {
+                        Color::new(0.09, 0.09, 0.15, 0.90)
+                    };
+
+                    draw_rectangle(card_x, card_y, card_w, card_h, bg_col);
+                    draw_rectangle_lines(card_x, card_y, card_w, card_h, 1.0, if can_upgrade && is_hovered { mocha::GREEN } else { mocha::SURFACE0 });
+
+                    // Key Badge Pill
+                    let kb_x = card_x + 14.0;
+                    let kb_y = card_y + 16.0;
+                    draw_rectangle(kb_x, kb_y, 30.0, 26.0, mocha::CRUST);
+                    draw_rectangle_lines(kb_x, kb_y, 30.0, 26.0, 1.0, mocha::SURFACE2);
+                    draw_crisp_text(custom_font.as_ref(), key_str, kb_x + 10.0, kb_y + 18.0, 15.0, mocha::TEXT);
+
+                    // Title & Description
+                    draw_crisp_text_shadow(custom_font.as_ref(), title, card_x + 56.0, card_y + 24.0, 16.0, mocha::TEXT);
+                    draw_crisp_text(custom_font.as_ref(), desc, card_x + 56.0, card_y + 44.0, 13.0, mocha::SUBTEXT1);
+
+                    // 5 Level Pips
+                    let pips_x = card_x + card_w - 200.0;
+                    for p in 0..5 {
+                        let pip_cx = pips_x + (p as f32 * 14.0);
+                        let pip_cy = card_y + 28.0;
+                        if (p as u32) < *level {
+                            draw_circle(pip_cx, pip_cy, 5.0, mocha::GREEN);
+                        } else {
+                            draw_circle_lines(pip_cx, pip_cy, 5.0, 1.2, mocha::SURFACE2);
+                        }
+                    }
+
+                    let lvl_str = format!("{} / 5", level);
+                    draw_crisp_text(custom_font.as_ref(), &lvl_str, pips_x + 78.0, card_y + 32.0, 13.0, mocha::LAVENDER);
+
+                    // Upgrade Button
+                    let up_w = 90.0;
+                    let up_x = card_x + card_w - up_w - 14.0;
+                    let up_y = card_y + 14.0;
+
+                    if is_max {
+                        draw_rectangle(up_x, up_y, up_w, 28.0, mocha::SURFACE0);
+                        draw_crisp_text(custom_font.as_ref(), "MAX", up_x + 30.0, up_y + 19.0, 13.0, mocha::PEACH);
+                    } else if can_upgrade {
+                        draw_rectangle(up_x, up_y, up_w, 28.0, Color::new(0.65, 0.89, 0.63, 0.2));
+                        draw_rectangle_lines(up_x, up_y, up_w, 28.0, 1.2, mocha::GREEN);
+                        draw_crisp_text(custom_font.as_ref(), "+1 [Clic]", up_x + 18.0, up_y + 19.0, 13.0, mocha::GREEN);
+                    } else {
+                        draw_rectangle(up_x, up_y, up_w, 28.0, mocha::CRUST);
+                        draw_crisp_text(custom_font.as_ref(), "+1", up_x + 38.0, up_y + 19.0, 13.0, mocha::OVERLAY0);
+                    }
+
+                    if (is_key_pressed(*key) || (is_hovered && mouse_clicked)) && can_upgrade {
                         game.local_ship.talent_points -= 1;
                         match talent_idx {
                             0 => game.local_ship.talents.combat_laser_dmg += 1,
@@ -1639,44 +1883,105 @@ async fn main() {
                             _ => {}
                         }
                         game.local_ship.apply_talent_bonuses();
+                        game.spawn_float_text(format!("🧬 Compétence améliorée : {}", title), game.local_ship.position, mocha::GREEN);
                         game.send_message(&ClientMessage::UpgradeTalent { talent_index: *talent_idx });
                     }
                 }
 
-                draw_text("[T ou Échap pour fermer l'arbre]", mx + 160.0, my + mh - 16.0, 12.0, SKYBLUE);
+                draw_crisp_text(custom_font.as_ref(), "Appuyez sur [1 à 6] ou cliquez pour dépenser vos points • [Échap] pour fermer", mx + 110.0, my + mh - 16.0, 13.0, mocha::OVERLAY1);
             }
             ActiveModal::Crafting => {
-                let mw = 580.0;
-                let mh = 390.0;
+                // Fullscreen Backdrop Dimming
+                draw_rectangle(0.0, 0.0, screen_width(), screen_height(), Color::new(0.07, 0.07, 0.11, 0.88));
+
+                let mw = 760.0_f32.min(screen_width() - 40.0);
+                let mh = 540.0_f32.min(screen_height() - 40.0);
                 let mx = (screen_width() - mw) * 0.5;
                 let my = (screen_height() - mh) * 0.5;
 
-                draw_rectangle(mx, my, mw, mh, Color::new(0.05, 0.08, 0.16, 0.96));
-                draw_rectangle_lines(mx, my, mw, mh, 2.0, YELLOW);
-                draw_text("🛠️ ATELIER D'ASSEMBLAGE (CRAFT)", mx + 24.0, my + 38.0, 20.0, YELLOW);
-                draw_text(&format!("Ressources : {} Prometium | {} Endurium | {} Terbium | {} Ferraille",
-                    game.local_ship.cargo.prometium, game.local_ship.cargo.endurium, game.local_ship.cargo.terbium, game.local_ship.cargo.scrap),
-                    mx + 24.0, my + 64.0, 12.0, SKYBLUE);
+                draw_rectangle(mx, my, mw, mh, mocha::BASE);
+                draw_rectangle_lines(mx, my, mw, mh, 2.0, mocha::YELLOW);
+
+                // Header Bar
+                draw_rectangle(mx, my, mw, 54.0, mocha::MANTLE);
+                draw_line(mx, my + 54.0, mx + mw, my + 54.0, 1.5, mocha::SURFACE1);
+                draw_crisp_text_shadow(custom_font.as_ref(), "🛠️ ATELIER DE FABRICATION SPATIALE", mx + 22.0, my + 34.0, 21.0, mocha::TEXT);
+
+                // Close Button in Header
+                let close_btn_x = mx + mw - 100.0;
+                let close_btn_y = my + 14.0;
+                let close_hover = mouse_x >= close_btn_x && mouse_x <= close_btn_x + 85.0 && mouse_y >= close_btn_y && mouse_y <= close_btn_y + 26.0;
+                draw_rectangle(close_btn_x, close_btn_y, 85.0, 26.0, if close_hover { mocha::SURFACE1 } else { mocha::SURFACE0 });
+                draw_rectangle_lines(close_btn_x, close_btn_y, 85.0, 26.0, 1.0, if close_hover { mocha::RED } else { mocha::SURFACE2 });
+                draw_crisp_text(custom_font.as_ref(), "✕ ÉCHAP", close_btn_x + 18.0, close_btn_y + 18.0, 13.0, mocha::TEXT);
+                if close_hover && mouse_clicked {
+                    game.active_modal = ActiveModal::None;
+                }
+
+                // Resource Pill Bar
+                let res_y = my + 64.0;
+                let res_bar = format!("💎 Prom: {}  •  End: {}  •  Terb: {}  •  Ferraille: {}  •  Crédits: {} C",
+                    game.local_ship.cargo.prometium, game.local_ship.cargo.endurium, game.local_ship.cargo.terbium,
+                    game.local_ship.cargo.scrap, game.local_ship.credits);
+                draw_crisp_text_shadow(custom_font.as_ref(), &res_bar, mx + 24.0, res_y + 14.0, 14.0, mocha::SAPPHIRE);
 
                 let keys = [KeyCode::Key1, KeyCode::Key2, KeyCode::Key3, KeyCode::Key4];
+                let key_names = ["1", "2", "3", "4"];
+
                 for (idx, recipe) in CRAFT_RECIPES.iter().enumerate() {
-                    let ry = my + 86.0 + (idx as f32 * 66.0);
+                    let card_y = my + 94.0 + (idx as f32 * 96.0);
+                    let card_h = 86.0;
+                    let card_w = mw - 40.0;
+                    let card_x = mx + 20.0;
+
                     let can_craft = game.local_ship.cargo.prometium >= recipe.cost_prometium
                         && game.local_ship.cargo.endurium >= recipe.cost_endurium
                         && game.local_ship.cargo.terbium >= recipe.cost_terbium
                         && game.local_ship.cargo.scrap >= recipe.cost_scrap
                         && game.local_ship.credits >= recipe.cost_credits;
 
-                    draw_rectangle(mx + 20.0, ry, mw - 40.0, 56.0, Color::new(0.08, 0.12, 0.22, 0.7));
-                    draw_rectangle_lines(mx + 20.0, ry, mw - 40.0, 56.0, 1.0, if can_craft { GREEN } else { DARKGRAY });
+                    let is_hovered = mouse_x >= card_x && mouse_x <= card_x + card_w && mouse_y >= card_y && mouse_y <= card_y + card_h;
 
-                    draw_text(&format!("{}. {}", idx + 1, recipe.name), mx + 30.0, ry + 20.0, 14.0, if can_craft { GOLD } else { WHITE });
-                    draw_text(recipe.description, mx + 30.0, ry + 36.0, 11.0, GRAY);
-                    draw_text(&format!("Coût: {} Prom., {} End., {} Terb., {} Ferraille, {} C.",
-                        recipe.cost_prometium, recipe.cost_endurium, recipe.cost_terbium, recipe.cost_scrap, recipe.cost_credits),
-                        mx + 30.0, ry + 50.0, 10.0, if can_craft { GREEN } else { RED });
+                    let bg_col = if is_hovered && can_craft {
+                        Color::new(0.18, 0.22, 0.30, 0.95)
+                    } else {
+                        Color::new(0.09, 0.09, 0.15, 0.90)
+                    };
 
-                    if is_key_pressed(keys[idx]) && can_craft {
+                    draw_rectangle(card_x, card_y, card_w, card_h, bg_col);
+                    draw_rectangle_lines(card_x, card_y, card_w, card_h, 1.0, if can_craft { mocha::GREEN } else { mocha::SURFACE0 });
+
+                    // Key Badge Pill
+                    let kb_x = card_x + 14.0;
+                    let kb_y = card_y + 14.0;
+                    draw_rectangle(kb_x, kb_y, 30.0, 26.0, mocha::CRUST);
+                    draw_rectangle_lines(kb_x, kb_y, 30.0, 26.0, 1.0, mocha::SURFACE2);
+                    draw_crisp_text(custom_font.as_ref(), key_names[idx], kb_x + 10.0, kb_y + 18.0, 15.0, mocha::TEXT);
+
+                    // Recipe Title & Description
+                    draw_crisp_text_shadow(custom_font.as_ref(), recipe.name, card_x + 56.0, card_y + 24.0, 17.0, if can_craft { mocha::YELLOW } else { mocha::TEXT });
+                    draw_crisp_text(custom_font.as_ref(), recipe.description, card_x + 56.0, card_y + 44.0, 13.0, mocha::SUBTEXT1);
+
+                    // Required Resources line
+                    let cost_desc = format!("Coût : {} Prom, {} End, {} Terb, {} Ferraille, {} C",
+                        recipe.cost_prometium, recipe.cost_endurium, recipe.cost_terbium, recipe.cost_scrap, recipe.cost_credits);
+                    draw_crisp_text(custom_font.as_ref(), &cost_desc, card_x + 56.0, card_y + 68.0, 12.0, if can_craft { mocha::GREEN } else { mocha::RED });
+
+                    // Craft Button
+                    let cb_w = 120.0;
+                    let cb_x = card_x + card_w - cb_w - 14.0;
+                    let cb_y = card_y + 16.0;
+
+                    if can_craft {
+                        draw_rectangle(cb_x, cb_y, cb_w, 28.0, Color::new(0.65, 0.89, 0.63, 0.2));
+                        draw_rectangle_lines(cb_x, cb_y, cb_w, 28.0, 1.2, mocha::GREEN);
+                        draw_crisp_text(custom_font.as_ref(), "ASSEMBLER [Clic]", cb_x + 14.0, cb_y + 19.0, 12.0, mocha::GREEN);
+                    } else {
+                        draw_rectangle(cb_x, cb_y, cb_w, 28.0, mocha::CRUST);
+                        draw_crisp_text(custom_font.as_ref(), "MANQUE RESSOURCES", cb_x + 8.0, cb_y + 19.0, 10.0, mocha::OVERLAY0);
+                    }
+
+                    if (is_key_pressed(keys[idx]) || (is_hovered && mouse_clicked)) && can_craft {
                         game.local_ship.cargo.prometium -= recipe.cost_prometium;
                         game.local_ship.cargo.endurium -= recipe.cost_endurium;
                         game.local_ship.cargo.terbium -= recipe.cost_terbium;
@@ -1690,28 +1995,29 @@ async fn main() {
                             game.local_ship.cargo.max_capacity += 40;
                         }
 
-                        game.spawn_float_text(format!("✨ Assemblé avec succès : {}", recipe.name), game.local_ship.position, GOLD);
+                        game.spawn_float_text(format!("✨ Assemblé avec succès : {}", recipe.name), game.local_ship.position, mocha::YELLOW);
                         game.send_message(&ClientMessage::Craft { recipe_index: idx as u32 });
                     }
                 }
 
-                draw_text("[C ou Échap pour fermer l'atelier]", mx + 160.0, my + mh - 16.0, 12.0, SKYBLUE);
+                draw_crisp_text(custom_font.as_ref(), "Appuyez sur [1 à 4] ou cliquez sur une recette pour l'assembler • [Échap] pour fermer", mx + 100.0, my + mh - 16.0, 13.0, mocha::OVERLAY1);
             }
             ActiveModal::None => {}
         }
 
-        // 19. Respawn Overlay
+        // 19. Respawn Overlay (Catppuccin Mocha)
         if !game.local_ship.is_alive {
-            draw_rectangle(0.0, screen_height() * 0.35, screen_width(), 130.0, Color::new(0.05, 0.05, 0.1, 0.9));
+            draw_rectangle(0.0, screen_height() * 0.35, screen_width(), 130.0, Color::new(0.07, 0.07, 0.11, 0.94));
             let d_title = "⚡ VAISSEAU DÉTRUIT ⚡";
-            let dw = measure_text(d_title, None, 32, 1.0).width;
-            draw_text(d_title, (screen_width() - dw) * 0.5, screen_height() * 0.43, 32.0, RED);
+            let dw = measure_crisp_text(custom_font.as_ref(), d_title, 34.0).width;
+            draw_crisp_text_shadow(custom_font.as_ref(), d_title, (screen_width() - dw) * 0.5, screen_height() * 0.43, 34.0, mocha::RED);
 
             let sub = "Appuyez sur ESPACE ou R pour vous réincarner à la Base Spatiale";
-            let sw = measure_text(sub, None, 17, 1.0).width;
-            draw_text(sub, (screen_width() - sw) * 0.5, screen_height() * 0.49, 17.0, WHITE);
+            let sw = measure_crisp_text(custom_font.as_ref(), sub, 18.0).width;
+            draw_crisp_text_shadow(custom_font.as_ref(), sub, (screen_width() - sw) * 0.5, screen_height() * 0.49, 18.0, mocha::TEXT);
         }
 
         next_frame().await;
     }
 }
+

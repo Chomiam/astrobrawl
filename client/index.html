@@ -11,17 +11,41 @@
 
     <style>
         :root {
-            --bg-dark: #070913;
-            --panel-bg: rgba(10, 16, 32, 0.85);
-            --panel-border: rgba(0, 229, 255, 0.35);
-            --primary: #00e5ff;
-            --primary-glow: rgba(0, 229, 255, 0.4);
-            --accent-green: #00ff88;
-            --accent-orange: #ff9900;
-            --accent-red: #ff3344;
-            --accent-blue: #3d8bff;
-            --text-main: #e0f2fe;
-            --text-muted: #64748b;
+            /* Catppuccin Mocha Palette */
+            --ctp-rosewater: #f5e0dc;
+            --ctp-flamingo: #f2cdcd;
+            --ctp-pink: #f5c2e7;
+            --ctp-mauve: #cba6f7;
+            --ctp-red: #f38ba8;
+            --ctp-maroon: #eba0ac;
+            --ctp-peach: #fab387;
+            --ctp-yellow: #f9e2af;
+            --ctp-green: #a6e3a1;
+            --ctp-teal: #94e2d5;
+            --ctp-sky: #89dceb;
+            --ctp-sapphire: #74c7ec;
+            --ctp-blue: #89b4fa;
+            --ctp-lavender: #b4befe;
+            --ctp-text: #cdd6f4;
+            --ctp-subtext1: #bac2de;
+            --ctp-subtext0: #a6adc8;
+            --ctp-overlay2: #9399b2;
+            --ctp-overlay1: #7f849c;
+            --ctp-overlay0: #6c7086;
+            --ctp-surface2: #585b70;
+            --ctp-surface1: #45475a;
+            --ctp-surface0: #313244;
+            --ctp-base: #1e1e2e;
+            --ctp-mantle: #181825;
+            --ctp-crust: #11111b;
+
+            --bg-dark: var(--ctp-crust);
+            --panel-bg: rgba(24, 24, 37, 0.95);
+            --panel-border: var(--ctp-surface1);
+            --primary: var(--ctp-mauve);
+            --primary-glow: rgba(203, 166, 247, 0.35);
+            --text-main: var(--ctp-text);
+            --text-muted: var(--ctp-subtext0);
             --font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
         }
 
@@ -61,52 +85,26 @@
             cursor: crosshair;
         }
 
-        /* Top HUD Bar */
-        #top-hud {
+        /* Killfeed / Log Box */
+        #killfeed {
             position: absolute;
-            top: 12px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 70px;
+            right: 20px;
             z-index: 10;
             display: flex;
-            align-items: center;
-            gap: 20px;
+            flex-direction: column;
+            gap: 6px;
+            pointer-events: none;
+        }
+
+        .killfeed-item {
             background: var(--panel-bg);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            padding: 8px 20px;
-            box-shadow: 0 0 20px rgba(0, 229, 255, 0.15), inset 0 0 10px rgba(0, 229, 255, 0.05);
-            backdrop-filter: blur(8px);
-            pointer-events: auto;
-        }
-
-        .hud-stat {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-
-        .stat-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 20px;
-            height: 20px;
+            border-left: 3px solid var(--ctp-peach);
+            padding: 6px 12px;
             border-radius: 4px;
-            font-size: 11px;
-            font-weight: 800;
-        }
-
-        .icon-credits { background: #ffd700; color: #000; }
-        .icon-minerals { background: #00e5ff; color: #000; }
-        .icon-score { background: #a855f7; color: #fff; }
-
-        .stat-val {
-            color: #fff;
-            text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+            font-size: 13px;
+            color: var(--ctp-text);
+            animation: fadeIn 0.3s ease;
         }
 
         /* Login / Connect Modal */
@@ -120,7 +118,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: radial-gradient(circle at center, rgba(10, 15, 30, 0.88) 0%, rgba(5, 7, 15, 0.98) 100%);
+            background: radial-gradient(circle at center, rgba(30, 30, 46, 0.90) 0%, rgba(17, 17, 27, 0.98) 100%);
             backdrop-filter: blur(10px);
             transition: opacity 0.3s ease;
         }
@@ -132,10 +130,10 @@
         }
 
         .auth-card {
-            width: 440px;
+            width: 460px;
             max-width: 90vw;
-            background: rgba(13, 20, 40, 0.95);
-            border: 1px solid var(--primary);
+            background: var(--ctp-mantle);
+            border: 1.5px solid var(--ctp-mauve);
             border-radius: 12px;
             padding: 32px;
             box-shadow: 0 0 40px var(--primary-glow);
@@ -151,14 +149,14 @@
             left: 0;
             right: 0;
             height: 3px;
-            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+            background: linear-gradient(90deg, transparent, var(--ctp-mauve), transparent);
         }
 
         .game-title {
             font-size: 32px;
             font-weight: 900;
             letter-spacing: 2px;
-            background: linear-gradient(135deg, #fff 0%, var(--primary) 100%);
+            background: linear-gradient(135deg, var(--ctp-text) 0%, var(--ctp-mauve) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 6px;
@@ -167,7 +165,7 @@
 
         .game-subtitle {
             font-size: 13px;
-            color: var(--text-muted);
+            color: var(--ctp-subtext0);
             margin-bottom: 24px;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -196,23 +194,23 @@
         }
 
         .btn-github {
-            background: #24292e;
-            color: #fff;
-            border: 1px solid #444c56;
+            background: var(--ctp-surface0);
+            color: var(--ctp-text);
+            border: 1px solid var(--ctp-surface2);
         }
         .btn-github:hover {
-            background: #2f363d;
-            border-color: #8b949e;
-            box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+            background: var(--ctp-surface1);
+            border-color: var(--ctp-mauve);
+            box-shadow: 0 0 15px rgba(203, 166, 247, 0.25);
         }
 
         .btn-guest {
-            background: linear-gradient(135deg, #0077b6, #00b4d8);
+            background: linear-gradient(135deg, #1e66f5, #04a5e5);
             color: #fff;
         }
         .btn-guest:hover {
-            background: linear-gradient(135deg, #0096c7, #48cae4);
-            box-shadow: 0 0 20px rgba(0, 180, 216, 0.4);
+            background: linear-gradient(135deg, #7287fd, #209fb5);
+            box-shadow: 0 0 20px rgba(114, 135, 253, 0.4);
             transform: translateY(-1px);
         }
 
@@ -224,125 +222,28 @@
         .input-group label {
             display: block;
             font-size: 12px;
-            color: var(--text-muted);
+            color: var(--ctp-subtext0);
             margin-bottom: 6px;
         }
 
         .input-field {
             width: 100%;
             padding: 10px 12px;
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(0, 229, 255, 0.2);
+            background: var(--ctp-surface0);
+            border: 1px solid var(--ctp-surface1);
             border-radius: 6px;
-            color: #fff;
+            color: var(--ctp-text);
             font-size: 13px;
             outline: none;
         }
         .input-field:focus {
-            border-color: var(--primary);
+            border-color: var(--ctp-mauve);
             box-shadow: 0 0 10px var(--primary-glow);
-        }
-
-        /* Controls Help Box */
-        #controls-help {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            z-index: 10;
-            background: var(--panel-bg);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 12px 16px;
-            font-size: 12px;
-            color: var(--text-muted);
-            backdrop-filter: blur(6px);
-            pointer-events: none;
-            line-height: 1.6;
-        }
-
-        #controls-help strong {
-            color: var(--primary);
-        }
-
-        /* Killfeed / Log Box */
-        #killfeed {
-            position: absolute;
-            top: 70px;
-            right: 20px;
-            z-index: 10;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            pointer-events: none;
-        }
-
-        .killfeed-item {
-            background: rgba(15, 23, 42, 0.75);
-            border-left: 3px solid var(--accent-orange);
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #e2e8f0;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .hud-btn {
-            background: rgba(0, 229, 255, 0.15);
-            border: 1px solid var(--panel-border);
-            color: var(--primary);
-            padding: 5px 9px;
-            font-size: 11px;
-            font-weight: 700;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            pointer-events: auto;
-        }
-        .hud-btn:hover {
-            background: rgba(0, 229, 255, 0.35);
-            box-shadow: 0 0 10px var(--primary-glow);
-            color: #fff;
-            transform: translateY(-1px);
         }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <!-- Top HUD -->
-        <div id="top-hud">
-            <div class="hud-stat">
-                <span class="stat-icon icon-credits">C</span>
-                <span>Crédits: <span id="hud-credits" class="stat-val">1000</span></span>
-            </div>
-            <div class="hud-stat">
-                <span class="stat-icon icon-minerals">💎</span>
-                <span>Minerais: <span id="hud-minerals" class="stat-val">0</span></span>
-            </div>
-            <div class="hud-stat">
-                <span class="stat-icon icon-score">★</span>
-                <span>Score: <span id="hud-score" class="stat-val">0</span></span>
-            </div>
-            <div class="hud-stat">
-                <span style="color: var(--primary);">Joueur: <span id="hud-player" class="stat-val">Pilote</span></span>
-            </div>
-        </div>
-
-        <!-- Controls Guide & Action Shortcuts -->
-        <div id="controls-help">
-            🎮 <strong>Commandes AstroBrawl :</strong><br>
-            • <strong>Z / W / Clic Droit :</strong> Propulseur inertiel<br>
-            • <strong>Espace / Clic Gauche :</strong> Tirer lasers<br>
-            • <strong>E (Maintenir) :</strong> Laser de forage (Minier uniquement)<br>
-            • <strong>J :</strong> Sauter dans un Portail / Faille cosmique<br>
-            • <strong>V :</strong> Vendre soute à la Base Spatiale
-            <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
-                <button class="hud-btn" onclick="triggerKey('h')">🚀 Hangar (H)</button>
-                <button class="hud-btn" onclick="triggerKey('t')">🧬 Talents (T)</button>
-                <button class="hud-btn" onclick="triggerKey('c')">🛠️ Craft (C)</button>
-                <button class="hud-btn" onclick="triggerKey('v')">💰 Vente (V)</button>
-            </div>
-        </div>
-
         <!-- Killfeed -->
         <div id="killfeed"></div>
 
@@ -497,10 +398,12 @@
             document.getElementById('auth-overlay').classList.add('hidden');
             const avatarUrl = localStorage.getItem('astrobrawl_avatar');
             const playerSpan = document.getElementById('hud-player');
-            if (avatarUrl) {
-                playerSpan.innerHTML = `<img src="${avatarUrl}" style="width: 18px; height: 18px; border-radius: 50%; vertical-align: middle; margin-right: 5px;"> ${username}`;
-            } else {
-                playerSpan.innerText = username || 'Pilote';
+            if (playerSpan) {
+                if (avatarUrl) {
+                    playerSpan.innerHTML = `<img src="${avatarUrl}" style="width: 18px; height: 18px; border-radius: 50%; vertical-align: middle; margin-right: 5px;"> ${username}`;
+                } else {
+                    playerSpan.innerText = username || 'Pilote';
+                }
             }
             document.getElementById('glcanvas').focus();
         }
@@ -533,9 +436,9 @@
                 return localStorage.getItem('astrobrawl_auth_token') || 'guest';
             },
             updateHud: function(credits, minerals, score) {
-                document.getElementById('hud-credits').innerText = credits;
-                document.getElementById('hud-minerals').innerText = minerals;
-                document.getElementById('hud-score').innerText = score;
+                const hc = document.getElementById('hud-credits'); if (hc) hc.innerText = credits;
+                const hm = document.getElementById('hud-minerals'); if (hm) hm.innerText = minerals;
+                const hs = document.getElementById('hud-score'); if (hs) hs.innerText = score;
             },
             addKillFeed: function(msg) {
                 const feed = document.getElementById('killfeed');
