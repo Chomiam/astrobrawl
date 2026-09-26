@@ -101,6 +101,16 @@ impl std::ops::Sub for Vec2 {
     }
 }
 
+impl std::ops::Neg for Vec2 {
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self {
+            x: -self.x,
+            y: -self.y,
+        }
+    }
+}
+
 impl std::ops::Mul<f32> for Vec2 {
     type Output = Self;
     fn mul(self, scalar: f32) -> Self {

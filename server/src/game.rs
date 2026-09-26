@@ -357,6 +357,49 @@ impl GameWorld {
             }
         }
 
+        // Continuous Alien Population Replenishment
+        let mut rng = rand::thread_rng();
+        let streuner_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Streuner).count();
+        let lordakia_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Lordakia).count();
+
+        if streuner_count < 12 {
+            let dist = rng.gen_range(500.0..1200.0);
+            let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+            self.aliens.push(Alien {
+                id: self.next_entity_id,
+                alien_type: AlienType::Streuner,
+                position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
+                velocity: Vec2::ZERO,
+                rotation: angle,
+                health: AlienType::Streuner.max_health(),
+                max_health: AlienType::Streuner.max_health(),
+                shield: AlienType::Streuner.max_shield(),
+                max_shield: AlienType::Streuner.max_shield(),
+                target_player_id: None,
+                last_shot_time: 0.0,
+            });
+            self.next_entity_id += 1;
+        }
+
+        if lordakia_count < 8 {
+            let dist = rng.gen_range(1100.0..1800.0);
+            let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+            self.aliens.push(Alien {
+                id: self.next_entity_id,
+                alien_type: AlienType::Lordakia,
+                position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
+                velocity: Vec2::ZERO,
+                rotation: angle,
+                health: AlienType::Lordakia.max_health(),
+                max_health: AlienType::Lordakia.max_health(),
+                shield: AlienType::Lordakia.max_shield(),
+                max_shield: AlienType::Lordakia.max_shield(),
+                target_player_id: None,
+                last_shot_time: 0.0,
+            });
+            self.next_entity_id += 1;
+        }
+
         // 2. Alien AI Simulation
         let mut alien_lasers = Vec::new();
         let now = self.time_elapsed;

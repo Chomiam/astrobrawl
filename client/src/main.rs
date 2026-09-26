@@ -457,10 +457,11 @@ impl GameClient {
         }
 
         // 2. Spawning Aliens
-        for i in 0..9 {
+        // 2. Spawning Aliens (Streuners, Lordakias, Sibelons)
+        for i in 0..16 {
             let seed = (i as f32 + 10.0) * 31.41;
             let angle = (seed.sin() * 43758.5453).fract() * std::f32::consts::TAU;
-            let dist = 550.0 + ((seed + 2.0).sin() * 43758.5453).fract().abs() * 650.0;
+            let dist = 480.0 + ((seed + 2.0).sin() * 43758.5453).fract().abs() * 750.0;
             let pos = Vec2::new(angle.cos() * dist, angle.sin() * dist);
 
             self.aliens.push(Alien {
@@ -480,10 +481,10 @@ impl GameClient {
         }
 
         // Lordakias (Fast fighters in outer ring)
-        for i in 0..5 {
+        for i in 0..8 {
             let seed = (i as f32 + 30.0) * 17.89;
             let angle = (seed.sin() * 43758.5453).fract() * std::f32::consts::TAU;
-            let dist = 1250.0 + ((seed + 1.0).sin() * 43758.5453).fract().abs() * 600.0;
+            let dist = 1100.0 + ((seed + 1.0).sin() * 43758.5453).fract().abs() * 700.0;
             let pos = Vec2::new(angle.cos() * dist, angle.sin() * dist);
 
             self.aliens.push(Alien {
@@ -496,6 +497,29 @@ impl GameClient {
                 max_health: AlienType::Lordakia.max_health(),
                 shield: AlienType::Lordakia.max_shield(),
                 max_shield: AlienType::Lordakia.max_shield(),
+                target_player_id: None,
+                last_shot_time: 0.0,
+            });
+            self.next_entity_id += 1;
+        }
+
+        // Sibelon Dreadnoughts (Titans in deep space)
+        for i in 0..3 {
+            let seed = (i as f32 + 50.0) * 23.45;
+            let angle = (seed.sin() * 43758.5453).fract() * std::f32::consts::TAU;
+            let dist = 1500.0 + ((seed + 3.0).sin() * 43758.5453).fract().abs() * 600.0;
+            let pos = Vec2::new(angle.cos() * dist, angle.sin() * dist);
+
+            self.aliens.push(Alien {
+                id: self.next_entity_id,
+                alien_type: AlienType::Sibelon,
+                position: pos,
+                velocity: Vec2::ZERO,
+                rotation: angle,
+                health: AlienType::Sibelon.max_health(),
+                max_health: AlienType::Sibelon.max_health(),
+                shield: AlienType::Sibelon.max_shield(),
+                max_shield: AlienType::Sibelon.max_shield(),
                 target_player_id: None,
                 last_shot_time: 0.0,
             });
@@ -802,8 +826,87 @@ impl GameClient {
             }
         }
 
-        // Alien AI Simulation
         let now = get_time() as f32;
+        let local_id = self.local_player_id;
+
+        // --- Continuous Alien Population Replenishment ---
+        let streuner_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Streuner).count();
+        let lordakia_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Lordakia).count();
+        let sibelon_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Sibelon).count();
+
+        // Replenish Streuners (Sector 1-1 inner ring: 480..1200)
+        if streuner_count < 16 {
+            let seed = (self.next_entity_id as f32 + now * 13.37) * 31.41;
+            let angle = (seed.sin() * 43758.5453).fract() * std::f32::consts::TAU;
+            let dist = 480.0 + ((seed + 2.0).sin() * 43758.5453).fract().abs() * 750.0;
+            let spawn_pos = Vec2::new(angle.cos() * dist, angle.sin() * dist);
+            if spawn_pos.distance_to(player_pos) > 280.0 {
+                self.aliens.push(Alien {
+                    id: self.next_entity_id,
+                    alien_type: AlienType::Streuner,
+                    position: spawn_pos,
+                    velocity: Vec2::ZERO,
+                    rotation: angle,
+                    health: AlienType::Streuner.max_health(),
+                    max_health: AlienType::Streuner.max_health(),
+                    shield: AlienType::Streuner.max_shield(),
+                    max_shield: AlienType::Streuner.max_shield(),
+                    target_player_id: None,
+                    last_shot_time: 0.0,
+                });
+                self.next_entity_id += 1;
+            }
+        }
+
+        // Replenish Lordakias (Sector outer ring: 1100..1800)
+        if lordakia_count < 8 {
+            let seed = (self.next_entity_id as f32 + now * 19.87) * 17.89;
+            let angle = (seed.sin() * 43758.5453).fract() * std::f32::consts::TAU;
+            let dist = 1100.0 + ((seed + 1.0).sin() * 43758.5453).fract().abs() * 700.0;
+            let spawn_pos = Vec2::new(angle.cos() * dist, angle.sin() * dist);
+            if spawn_pos.distance_to(player_pos) > 280.0 {
+                self.aliens.push(Alien {
+                    id: self.next_entity_id,
+                    alien_type: AlienType::Lordakia,
+                    position: spawn_pos,
+                    velocity: Vec2::ZERO,
+                    rotation: angle,
+                    health: AlienType::Lordakia.max_health(),
+                    max_health: AlienType::Lordakia.max_health(),
+                    shield: AlienType::Lordakia.max_shield(),
+                    max_shield: AlienType::Lordakia.max_shield(),
+                    target_player_id: None,
+                    last_shot_time: 0.0,
+                });
+                self.next_entity_id += 1;
+            }
+        }
+
+        // Replenish Sibelons (Deep space titans: 1500..2100)
+        if sibelon_count < 3 {
+            let seed = (self.next_entity_id as f32 + now * 27.65) * 23.45;
+            let angle = (seed.sin() * 43758.5453).fract() * std::f32::consts::TAU;
+            let dist = 1500.0 + ((seed + 3.0).sin() * 43758.5453).fract().abs() * 600.0;
+            let spawn_pos = Vec2::new(angle.cos() * dist, angle.sin() * dist);
+            if spawn_pos.distance_to(player_pos) > 350.0 {
+                self.aliens.push(Alien {
+                    id: self.next_entity_id,
+                    alien_type: AlienType::Sibelon,
+                    position: spawn_pos,
+                    velocity: Vec2::ZERO,
+                    rotation: angle,
+                    health: AlienType::Sibelon.max_health(),
+                    max_health: AlienType::Sibelon.max_health(),
+                    shield: AlienType::Sibelon.max_shield(),
+                    max_shield: AlienType::Sibelon.max_shield(),
+                    target_player_id: None,
+                    last_shot_time: 0.0,
+                });
+                self.next_entity_id += 1;
+            }
+        }
+
+        // Alien AI Simulation
         let mut new_alien_lasers = Vec::new();
         let mut dropped_loot = Vec::new();
 
@@ -812,18 +915,47 @@ impl GameClient {
                 continue;
             }
 
-            let dist = alien.position.distance_to(player_pos);
-            let aggro_range = alien.alien_type.aggro_range();
+            // Keep aliens inside bounds and outside safe station
+            let dist_from_center = alien.position.length();
+            if dist_from_center > 1450.0 {
+                let to_center = -alien.position.normalize();
+                alien.rotation = to_center.y.atan2(to_center.x);
+            } else if dist_from_center < 320.0 {
+                let away = alien.position.normalize();
+                alien.rotation = away.y.atan2(away.x);
+            }
 
-            if dist < aggro_range && !in_safe_zone && self.local_ship.is_alive {
-                // Aggro player
-                let dir = (player_pos - alien.position).normalize();
+            // Check nearest target: player (if outside safe station) or other active pilots
+            let mut nearest_target_pos = None;
+            let mut nearest_dist = alien.alien_type.aggro_range();
+
+            if !in_safe_zone && self.local_ship.is_alive {
+                let d = alien.position.distance_to(player_pos);
+                if d < nearest_dist {
+                    nearest_dist = d;
+                    nearest_target_pos = Some(player_pos);
+                }
+            }
+
+            for (pid, p) in &self.players {
+                if *pid != local_id && p.is_alive {
+                    let d = alien.position.distance_to(p.position);
+                    if d < nearest_dist {
+                        nearest_dist = d;
+                        nearest_target_pos = Some(p.position);
+                    }
+                }
+            }
+
+            if let Some(target_pos) = nearest_target_pos {
+                // Aggro target
+                let dir = (target_pos - alien.position).normalize();
                 alien.rotation = dir.y.atan2(dir.x);
                 alien.velocity = dir * alien.alien_type.speed();
                 alien.position += alien.velocity * dt;
 
                 // Alien Shoot
-                if now - alien.last_shot_time >= alien.alien_type.laser_cooldown() && dist < 420.0 {
+                if now - alien.last_shot_time >= alien.alien_type.laser_cooldown() && nearest_dist < 420.0 {
                     alien.last_shot_time = now;
                     let laser_dir = dir;
                     let spawn_pos = alien.position + laser_dir * 20.0;
@@ -851,7 +983,6 @@ impl GameClient {
 
         // --- Simulated Other Pilots AI & Actions ---
         let mut new_pilot_lasers = Vec::new();
-        let local_id = self.local_player_id;
         let mut pilots_to_respawn = Vec::new();
 
         let alien_targets: Vec<(u64, Vec2)> = self.aliens.iter()
@@ -909,9 +1040,12 @@ impl GameClient {
                     }
                 }
                 ShipClass::Combat => {
-                    if let Some((_a_id, a_pos)) = alien_targets.iter()
-                        .min_by(|a, b| pilot.position.distance_to(a.1).partial_cmp(&pilot.position.distance_to(b.1)).unwrap_or(std::cmp::Ordering::Equal))
-                    {
+                    // Engage aliens only within local sensor radius (550m) so combat bots don't vacuum entire galaxy
+                    let nearby_alien = alien_targets.iter()
+                        .filter(|(_, a_pos)| pilot.position.distance_to(*a_pos) < 550.0)
+                        .min_by(|a, b| pilot.position.distance_to(a.1).partial_cmp(&pilot.position.distance_to(b.1)).unwrap_or(std::cmp::Ordering::Equal));
+
+                    if let Some((_a_id, a_pos)) = nearby_alien {
                         let d = *a_pos - pilot.position;
                         let dist = d.length();
                         pilot.rotation = d.y.atan2(d.x);
@@ -925,8 +1059,8 @@ impl GameClient {
                             pilot.velocity *= 0.92;
                         }
 
-                        // Fire lasers at alien
-                        if dist < 420.0 && (now - pilot.id as f32 * 0.25) % 0.85 < dt {
+                        // Fire lasers at alien with balanced damage
+                        if dist < 420.0 && (now - pilot.id as f32 * 0.25) % 1.1 < dt {
                             let laser_dir = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
                             new_pilot_lasers.push(Laser {
                                 id: self.next_entity_id,
@@ -935,12 +1069,13 @@ impl GameClient {
                                 position: pilot.position + laser_dir * 22.0,
                                 velocity: laser_dir * LASER_SPEED,
                                 lifetime: LASER_LIFETIME,
-                                damage: pilot.ship_class.base_laser_damage() * 0.75,
+                                damage: pilot.ship_class.base_laser_damage() * 0.50,
                                 color_rgba: [0.2, 0.75, 1.0, 1.0],
                             });
                             self.next_entity_id += 1;
                         }
                     } else {
+                        // Patrol wander
                         pilot.is_thrusting = true;
                         pilot.rotation += ((pilot.id as f32) * 0.3 + now * 0.2).sin() * 0.6 * dt;
                         let forward = Vec2::new(pilot.rotation.cos(), pilot.rotation.sin());
@@ -962,6 +1097,12 @@ impl GameClient {
             }
 
             pilot.position += pilot.velocity * dt;
+
+            // Keep simulated pilots inside galaxy boundaries
+            if pilot.position.length() > 1420.0 {
+                let to_center = -pilot.position.normalize();
+                pilot.rotation = to_center.y.atan2(to_center.x);
+            }
         }
 
         // Apply mining damage from other pilots
