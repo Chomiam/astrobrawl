@@ -210,7 +210,7 @@ pub mod storage {
                 }
             }
         }
-        "ws://localhost:3000/ws".to_string()
+        "wss://astrobrawl-server.onrender.com/ws".to_string()
     }
 
     #[cfg(target_arch = "wasm32")]

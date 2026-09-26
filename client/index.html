@@ -324,20 +324,26 @@
         });
 
         // Server URL configuration
-        const isHttps = window.location.protocol === 'https:';
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const defaultWsUrl = isLocal ? 'ws://localhost:3000/ws' : ((isHttps ? 'wss://' : 'ws://') + window.location.host + '/ws');
+        const defaultWsUrl = isLocal ? 'ws://localhost:3000/ws' : 'wss://astrobrawl-server.onrender.com/ws';
         
         const serverInput = document.getElementById('server-url');
         const serverNotice = document.getElementById('server-notice');
 
-        serverInput.value = localStorage.getItem('astrobrawl_server_url') || defaultWsUrl;
+        let savedUrl = localStorage.getItem('astrobrawl_server_url') || '';
+        if (savedUrl.includes('astrobrawl.vercel.app')) {
+            savedUrl = '';
+            localStorage.removeItem('astrobrawl_server_url');
+        }
+
+        serverInput.placeholder = defaultWsUrl;
+        serverInput.value = savedUrl || defaultWsUrl;
 
         if (serverNotice) {
-            if (isHttps && !isLocal) {
-                serverNotice.innerHTML = `⚠️ <b style="color:var(--ctp-peach);">Sur Vercel (HTTPS)</b> : Pour synchroniser avec un serveur distant, renseignez une URL sécurisée (ex: <code>wss://...</code>) ou testez en direct sur <a href="http://localhost:3000" target="_blank" style="color:var(--ctp-sapphire); text-decoration:underline;">http://localhost:3000</a>.`;
+            if (isLocal) {
+                serverNotice.innerHTML = `✅ <span style="color:var(--ctp-green);">Connexion Locale Active</span> : synchronisation sur <code>ws://localhost:3000/ws</code>.`;
             } else {
-                serverNotice.innerHTML = `✅ <span style="color:var(--ctp-green);">Connexion Locale Détectée</span> : synchronisation temps réel sur <code>ws://localhost:3000/ws</code>.`;
+                serverNotice.innerHTML = `🌐 <span style="color:var(--ctp-green);">Serveur Cloud Render Connecté</span> : synchronisation temps réel sur <code>wss://astrobrawl-server.onrender.com/ws</code>.`;
             }
         }
 
@@ -854,14 +860,9 @@
                 importObject.env.mq_get_server_url = function(dest_ptr, max_len) {
                     try {
                         let url = localStorage.getItem('astrobrawl_server_url') || '';
-                        if (!url || url.trim() === '') {
-                            const isHttps = window.location.protocol === 'https:';
-                            const proto = isHttps ? 'wss://' : 'ws://';
-                            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                                url = 'ws://localhost:3000/ws';
-                            } else {
-                                url = proto + window.location.host + '/ws';
-                            }
+                        if (!url || url.trim() === '' || url.includes('astrobrawl.vercel.app')) {
+                            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                            url = isLocal ? 'ws://localhost:3000/ws' : 'wss://astrobrawl-server.onrender.com/ws';
                         }
                         const encoder = new TextEncoder();
                         const bytes = encoder.encode(url);
