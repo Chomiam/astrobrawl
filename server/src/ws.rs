@@ -69,9 +69,8 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
 
     info!("Joueur connecté au WebSocket: ID={} Username={}", player_id, username);
 
-    let mut ship = PlayerShip::new(player_id, username.clone(), Vec2::new(0.0, 0.0));
+    let mut ship = PlayerShip::new(player_id, username.clone(), ShipClass::Combat, Vec2::new(0.0, 0.0));
     ship.credits = player_rec.credits;
-    ship.minerals = player_rec.minerals;
     ship.score = player_rec.score;
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
@@ -85,6 +84,7 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
         player_id,
         username: username.clone(),
         ship: ship.clone(),
+        current_map: MapId::Map1_1,
     };
     if let Ok(bytes) = serialize_packet(&auth_ok) {
         let _ = ws_sender.send(Message::Binary(bytes.into())).await;
@@ -116,6 +116,26 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
                             ClientMessage::Shoot => {
                                 let mut world = world_clone.write().await;
                                 world.handle_shoot(player_id);
+                            }
+                            ClientMessage::StartMining { mineral_id } => {
+                                let mut world = world_clone.write().await;
+                                world.handle_mining(player_id, mineral_id, true);
+                            }
+                            ClientMessage::StopMining => {
+                                let mut world = world_clone.write().await;
+                                world.handle_mining(player_id, 0, false);
+                            }
+                            ClientMessage::SelectClass { class } => {
+                                let mut world = world_clone.write().await;
+                                world.handle_select_class(player_id, class);
+                            }
+                            ClientMessage::UpgradeTalent { talent_index } => {
+                                let mut world = world_clone.write().await;
+                                world.handle_upgrade_talent(player_id, talent_index);
+                            }
+                            ClientMessage::SellCargo => {
+                                let mut world = world_clone.write().await;
+                                world.handle_sell_cargo(player_id);
                             }
                             ClientMessage::Respawn => {
                                 let mut world = world_clone.write().await;

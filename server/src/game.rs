@@ -16,8 +16,13 @@ pub struct ConnectedPlayer {
 
 pub struct GameWorld {
     pub players: HashMap<PlayerId, ConnectedPlayer>,
+    pub aliens: Vec<Alien>,
     pub lasers: Vec<Laser>,
     pub minerals: Vec<Mineral>,
+    pub loot_boxes: Vec<LootBox>,
+    pub portals: Vec<Portal>,
+    pub current_map: MapId,
+    pub space_base: SpaceBase,
     pub next_entity_id: u64,
     pub tick: u64,
     pub time_elapsed: f32,
@@ -28,46 +33,145 @@ pub type SharedWorld = Arc<RwLock<GameWorld>>;
 
 impl GameWorld {
     pub fn new(db_pool: DbPool) -> Self {
+        let space_base = SpaceBase {
+            position: Vec2::new(0.0, 0.0),
+            radius: BASE_RADIUS,
+            name: "Station Spatiale Alpha".to_string(),
+        };
+
         let mut world = Self {
             players: HashMap::new(),
+            aliens: Vec::new(),
             lasers: Vec::new(),
             minerals: Vec::new(),
+            loot_boxes: Vec::new(),
+            portals: Vec::new(),
+            current_map: MapId::Map1_1,
+            space_base,
             next_entity_id: 1,
             tick: 0,
             time_elapsed: 0.0,
             db_pool,
         };
 
-        // Populate initial minerals
-        world.populate_minerals();
+        world.init_world_entities();
         world
     }
 
-    pub fn populate_minerals(&mut self) {
+    pub fn init_world_entities(&mut self) {
         let mut rng = rand::thread_rng();
-        let half_w = WORLD_WIDTH * 0.45;
-        let half_h = WORLD_HEIGHT * 0.45;
 
-        while self.minerals.len() < MAX_MINERALS_ON_MAP {
-            let m_type = match rng.gen_range(0..100) {
-                0..=59 => MineralType::Prometium,
-                60..=89 => MineralType::Endurium,
-                _ => MineralType::Terbium,
-            };
+        // 1. Minerals
+        let mineral_dist = [
+            (MineralType::Prometium, 40),
+            (MineralType::Endurium, 25),
+            (MineralType::Terbium, 15),
+            (MineralType::Seprom, 8),
+        ];
 
-            let pos = Vec2::new(
-                rng.gen_range(-half_w..half_w),
-                rng.gen_range(-half_h..half_h),
-            );
+        for (m_type, count) in mineral_dist {
+            for _ in 0..count {
+                let dist = rng.gen_range(400.0..1800.0);
+                let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+                self.minerals.push(Mineral {
+                    id: self.next_entity_id,
+                    mineral_type: m_type,
+                    position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
+                    health: m_type.max_health(),
+                    max_health: m_type.max_health(),
+                });
+                self.next_entity_id += 1;
+            }
+        }
 
-            self.minerals.push(Mineral {
+        // 2. Aliens
+        // Streuners (Map 1-1)
+        for _ in 0..10 {
+            let dist = rng.gen_range(500.0..1200.0);
+            let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+            self.aliens.push(Alien {
                 id: self.next_entity_id,
-                mineral_type: m_type,
-                position: pos,
-                value: m_type.value(),
+                alien_type: AlienType::Streuner,
+                position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
+                velocity: Vec2::ZERO,
+                rotation: angle,
+                health: AlienType::Streuner.max_health(),
+                max_health: AlienType::Streuner.max_health(),
+                shield: AlienType::Streuner.max_shield(),
+                max_shield: AlienType::Streuner.max_shield(),
+                target_player_id: None,
+                last_shot_time: 0.0,
             });
             self.next_entity_id += 1;
         }
+
+        // Lordakias
+        for _ in 0..6 {
+            let dist = rng.gen_range(1100.0..1800.0);
+            let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+            self.aliens.push(Alien {
+                id: self.next_entity_id,
+                alien_type: AlienType::Lordakia,
+                position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
+                velocity: Vec2::ZERO,
+                rotation: angle,
+                health: AlienType::Lordakia.max_health(),
+                max_health: AlienType::Lordakia.max_health(),
+                shield: AlienType::Lordakia.max_shield(),
+                max_shield: AlienType::Lordakia.max_shield(),
+                target_player_id: None,
+                last_shot_time: 0.0,
+            });
+            self.next_entity_id += 1;
+        }
+
+        // 3. Portals
+        // Jump Gate 1-2
+        self.portals.push(Portal {
+            id: self.next_entity_id,
+            position: Vec2::new(1400.0, 1400.0),
+            radius: 55.0,
+            portal_type: PortalType::MapJump {
+                target_map: MapId::Map1_2,
+                target_pos: Vec2::new(-1300.0, -1300.0),
+            },
+        });
+        self.next_entity_id += 1;
+
+        // Jump Gate 4-4 (PvP)
+        self.portals.push(Portal {
+            id: self.next_entity_id,
+            position: Vec2::new(-1400.0, -1400.0),
+            radius: 55.0,
+            portal_type: PortalType::MapJump {
+                target_map: MapId::Map4_4,
+                target_pos: Vec2::new(0.0, 0.0),
+            },
+        });
+        self.next_entity_id += 1;
+
+        // Dynamic Event Rifts
+        self.portals.push(Portal {
+            id: self.next_entity_id,
+            position: Vec2::new(0.0, -1350.0),
+            radius: 65.0,
+            portal_type: PortalType::EventRift {
+                event_type: EventRiftType::RedBoss,
+                time_left: 360.0,
+            },
+        });
+        self.next_entity_id += 1;
+
+        self.portals.push(Portal {
+            id: self.next_entity_id,
+            position: Vec2::new(-1350.0, 0.0),
+            radius: 65.0,
+            portal_type: PortalType::EventRift {
+                event_type: EventRiftType::GreenMining,
+                time_left: 240.0,
+            },
+        });
+        self.next_entity_id += 1;
     }
 
     pub fn add_player(&mut self, player_ship: PlayerShip, tx: mpsc::UnboundedSender<Vec<u8>>) {
@@ -86,17 +190,15 @@ impl GameWorld {
             },
         );
 
-        // Notify other players
         let join_msg = ServerMessage::PlayerJoined { id, username: name };
         self.broadcast_message(&join_msg);
     }
 
     pub fn remove_player(&mut self, player_id: PlayerId) {
         if let Some(player) = self.players.remove(&player_id) {
-            // Save player stats in DB asynchronously
             let pool = self.db_pool.clone();
             let c = player.ship.credits;
-            let m = player.ship.minerals;
+            let m = player.ship.cargo.total_value_credits();
             let s = player.ship.score;
             tokio::spawn(async move {
                 let _ = crate::db::save_player_stats(&pool, player_id, c, m, s);
@@ -116,27 +218,89 @@ impl GameWorld {
 
     pub fn handle_shoot(&mut self, player_id: PlayerId) {
         if let Some(p) = self.players.get_mut(&player_id) {
-            if !p.ship.is_alive {
+            if !p.ship.is_alive || p.ship.is_in_safe_zone {
                 return;
             }
 
-            if self.time_elapsed - p.last_shot_time >= LASER_COOLDOWN {
+            let talent_rate_bonus = 1.0 + (p.ship.talents.combat_fire_rate as f32 * 0.05);
+            let cooldown = p.ship.ship_class.laser_cooldown() / talent_rate_bonus;
+
+            if self.time_elapsed - p.last_shot_time >= cooldown {
                 p.last_shot_time = self.time_elapsed;
 
-                // Spawn laser from front of ship
                 let dir = Vec2::new(p.ship.rotation.cos(), p.ship.rotation.sin());
                 let spawn_pos = p.ship.position + dir * (SHIP_RADIUS + 4.0);
-                let laser_vel = dir * LASER_SPEED + p.ship.velocity * 0.3;
+
+                let talent_dmg_bonus = 1.0 + (p.ship.talents.combat_laser_dmg as f32 * 0.06);
+                let dmg = p.ship.ship_class.base_laser_damage() * talent_dmg_bonus;
 
                 let laser = Laser {
                     id: self.next_entity_id,
                     shooter_id: player_id,
+                    is_alien: false,
                     position: spawn_pos,
-                    velocity: laser_vel,
+                    velocity: dir * LASER_SPEED + p.ship.velocity * 0.3,
                     lifetime: LASER_LIFETIME,
+                    damage: dmg,
+                    color_rgba: match p.ship.ship_class {
+                        ShipClass::Combat => [0.0, 0.9, 1.0, 1.0],
+                        ShipClass::Minier => [1.0, 0.75, 0.1, 1.0],
+                        ShipClass::Transport => [0.2, 0.7, 1.0, 1.0],
+                        ShipClass::Exploration => [0.2, 1.0, 0.5, 1.0],
+                    },
                 };
                 self.next_entity_id += 1;
                 self.lasers.push(laser);
+            }
+        }
+    }
+
+    pub fn handle_mining(&mut self, player_id: PlayerId, mineral_id: u64, is_start: bool) {
+        if let Some(p) = self.players.get_mut(&player_id) {
+            if is_start && p.ship.ship_class.can_mine() {
+                p.ship.is_mining = true;
+                p.ship.mining_target = Some(mineral_id);
+            } else {
+                p.ship.is_mining = false;
+                p.ship.mining_target = None;
+            }
+        }
+    }
+
+    pub fn handle_select_class(&mut self, player_id: PlayerId, class: ShipClass) {
+        if let Some(p) = self.players.get_mut(&player_id) {
+            p.ship.ship_class = class;
+            p.ship.max_health = class.base_health();
+            p.ship.health = class.base_health();
+            p.ship.max_shield = class.base_shield();
+            p.ship.shield = class.base_shield();
+            p.ship.apply_talent_bonuses();
+        }
+    }
+
+    pub fn handle_upgrade_talent(&mut self, player_id: PlayerId, talent_idx: u32) {
+        if let Some(p) = self.players.get_mut(&player_id) {
+            if p.ship.talent_points > 0 {
+                p.ship.talent_points -= 1;
+                match talent_idx {
+                    0 => p.ship.talents.combat_laser_dmg += 1,
+                    1 => p.ship.talents.combat_fire_rate += 1,
+                    2 => p.ship.talents.defense_shield_max += 1,
+                    3 => p.ship.talents.defense_regen += 1,
+                    4 => p.ship.talents.logistics_cargo += 1,
+                    5 => p.ship.talents.logistics_mining_speed += 1,
+                    _ => {}
+                }
+                p.ship.apply_talent_bonuses();
+            }
+        }
+    }
+
+    pub fn handle_sell_cargo(&mut self, player_id: PlayerId) {
+        if let Some(p) = self.players.get_mut(&player_id) {
+            if p.ship.is_in_safe_zone {
+                let credits = p.ship.cargo.sell_all_minerals();
+                p.ship.credits += credits;
             }
         }
     }
@@ -150,8 +314,8 @@ impl GameWorld {
                 p.ship.shield = p.ship.max_shield;
                 p.ship.velocity = Vec2::ZERO;
                 p.ship.position = Vec2::new(
-                    rng.gen_range(-400.0..400.0),
-                    rng.gen_range(-400.0..400.0),
+                    rng.gen_range(-200.0..200.0),
+                    rng.gen_range(-200.0..200.0),
                 );
             }
         }
@@ -161,7 +325,10 @@ impl GameWorld {
         self.tick += 1;
         self.time_elapsed += TICK_DT;
 
-        // 1. Update Players Physics & Shields
+        let base_pos = self.space_base.position;
+        let base_rad = self.space_base.radius;
+
+        // 1. Update Players Physics, Safe Zone & Shield Regen
         for player in self.players.values_mut() {
             if player.ship.is_alive {
                 apply_ship_physics(
@@ -171,150 +338,258 @@ impl GameWorld {
                     TICK_DT,
                 );
 
-                // Shield passive regeneration
-                if player.ship.shield < player.ship.max_shield {
-                    player.ship.shield =
-                        (player.ship.shield + SHIELD_REGEN_PER_SEC * TICK_DT).min(player.ship.max_shield);
+                let in_safe = player.ship.position.distance_to(base_pos) <= base_rad;
+                player.ship.is_in_safe_zone = in_safe;
+
+                if in_safe {
+                    let regen = 25.0 * TICK_DT;
+                    player.ship.health = (player.ship.health + regen).min(player.ship.max_health);
+                    player.ship.shield = (player.ship.shield + regen * 1.5).min(player.ship.max_shield);
+                } else {
+                    let regen = 4.0 * TICK_DT * (1.0 + player.ship.talents.defense_regen as f32 * 0.15);
+                    player.ship.shield = (player.ship.shield + regen).min(player.ship.max_shield);
                 }
-            } else {
-                if player.respawn_timer > 0.0 {
-                    player.respawn_timer -= TICK_DT;
-                }
+            } else if player.respawn_timer > 0.0 {
+                player.respawn_timer -= TICK_DT;
             }
         }
 
-        // 2. Update Lasers
+        // 2. Alien AI Simulation
+        let mut alien_lasers = Vec::new();
+        let now = self.time_elapsed;
+
+        for alien in &mut self.aliens {
+            if alien.health <= 0.0 {
+                continue;
+            }
+
+            // Find closest non-safe player
+            let mut closest_player = None;
+            let mut min_dist = alien.alien_type.aggro_range();
+
+            for (p_id, p) in &self.players {
+                if p.ship.is_alive && !p.ship.is_in_safe_zone {
+                    let d = alien.position.distance_to(p.ship.position);
+                    if d < min_dist {
+                        min_dist = d;
+                        closest_player = Some((*p_id, p.ship.position));
+                    }
+                }
+            }
+
+            if let Some((_target_id, target_pos)) = closest_player {
+                let dir = (target_pos - alien.position).normalize();
+                alien.rotation = dir.y.atan2(dir.x);
+                alien.velocity = dir * alien.alien_type.speed();
+                alien.position += alien.velocity * TICK_DT;
+
+                if now - alien.last_shot_time >= alien.alien_type.laser_cooldown() && min_dist < 420.0 {
+                    alien.last_shot_time = now;
+                    let spawn_pos = alien.position + dir * 20.0;
+                    alien_lasers.push(Laser {
+                        id: self.next_entity_id,
+                        shooter_id: alien.id,
+                        is_alien: true,
+                        position: spawn_pos,
+                        velocity: dir * (LASER_SPEED * 0.75),
+                        lifetime: LASER_LIFETIME,
+                        damage: alien.alien_type.laser_damage(),
+                        color_rgba: [1.0, 0.2, 0.25, 1.0],
+                    });
+                    self.next_entity_id += 1;
+                }
+            } else {
+                alien.rotation += (alien.id as f32 * 0.1 + now * 0.2).sin() * TICK_DT;
+                let forward = Vec2::new(alien.rotation.cos(), alien.rotation.sin());
+                alien.position += forward * (alien.alien_type.speed() * 0.3 * TICK_DT);
+            }
+        }
+
+        self.lasers.extend(alien_lasers);
+
+        // 3. Update Lasers
         for laser in &mut self.lasers {
             laser.position += laser.velocity * TICK_DT;
             laser.lifetime -= TICK_DT;
         }
 
-        // 3. Laser collisions with players
-        let mut dead_lasers = Vec::new();
+        // 4. Laser Collisions (Aliens & PvP)
+        let mut hit_alien_ids = Vec::new();
         let mut kills = Vec::new();
 
-        for (l_idx, laser) in self.lasers.iter().enumerate() {
+        for laser in &mut self.lasers {
             if laser.lifetime <= 0.0 {
-                dead_lasers.push(l_idx);
                 continue;
             }
 
-            for (target_id, target_player) in self.players.iter_mut() {
-                if *target_id != laser.shooter_id && target_player.ship.is_alive {
-                    let dist = laser.position.distance_to(target_player.ship.position);
-                    if dist <= SHIP_RADIUS + 3.0 {
-                        dead_lasers.push(l_idx);
-
-                        // Apply damage: shield takes damage first
-                        let mut rem_damage = LASER_DAMAGE;
-                        if target_player.ship.shield > 0.0 {
-                            if target_player.ship.shield >= rem_damage {
-                                target_player.ship.shield -= rem_damage;
-                                rem_damage = 0.0;
-                            } else {
-                                rem_damage -= target_player.ship.shield;
-                                target_player.ship.shield = 0.0;
-                            }
+            if !laser.is_alien {
+                // Player laser hits aliens
+                for alien in &mut self.aliens {
+                    if alien.health > 0.0 && laser.position.distance_to(alien.position) < 26.0 {
+                        laser.lifetime = 0.0;
+                        let dmg = laser.damage;
+                        if alien.shield > 0.0 {
+                            let absorbed = dmg.min(alien.shield);
+                            alien.shield -= absorbed;
+                            let remaining = dmg - absorbed;
+                            alien.health -= remaining;
+                        } else {
+                            alien.health -= dmg;
                         }
 
-                        target_player.ship.health -= rem_damage;
-
-                        // Check ship destruction
-                        if target_player.ship.health <= 0.0 {
-                            target_player.ship.health = 0.0;
-                            target_player.ship.is_alive = false;
-                            target_player.respawn_timer = 3.0; // 3 sec before respawn allowed
-                            kills.push((*target_id, laser.shooter_id));
+                        if alien.health <= 0.0 {
+                            hit_alien_ids.push((alien.id, laser.shooter_id));
                         }
                         break;
+                    }
+                }
+
+                // PvP in Map 4-4
+                if self.current_map.is_pvp() {
+                    for (target_id, target_player) in self.players.iter_mut() {
+                        if *target_id != laser.shooter_id && target_player.ship.is_alive && !target_player.ship.is_in_safe_zone {
+                            if laser.position.distance_to(target_player.ship.position) <= SHIP_RADIUS + 3.0 {
+                                laser.lifetime = 0.0;
+                                let mut rem_damage = laser.damage;
+                                if target_player.ship.shield > 0.0 {
+                                    let abs = rem_damage.min(target_player.ship.shield);
+                                    target_player.ship.shield -= abs;
+                                    rem_damage -= abs;
+                                }
+                                target_player.ship.health -= rem_damage;
+                                if target_player.ship.health <= 0.0 {
+                                    target_player.ship.health = 0.0;
+                                    target_player.ship.is_alive = false;
+                                    target_player.respawn_timer = 3.0;
+                                    kills.push((*target_id, laser.shooter_id));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Alien laser hits players
+                for (target_id, target_player) in self.players.iter_mut() {
+                    if target_player.ship.is_alive && !target_player.ship.is_in_safe_zone {
+                        if laser.position.distance_to(target_player.ship.position) <= SHIP_RADIUS + 3.0 {
+                            laser.lifetime = 0.0;
+                            let mut rem_damage = laser.damage;
+                            if target_player.ship.shield > 0.0 {
+                                let abs = rem_damage.min(target_player.ship.shield);
+                                target_player.ship.shield -= abs;
+                                rem_damage -= abs;
+                            }
+                            target_player.ship.health -= rem_damage;
+                            if target_player.ship.health <= 0.0 {
+                                target_player.ship.health = 0.0;
+                                target_player.ship.is_alive = false;
+                                target_player.respawn_timer = 3.0;
+                                kills.push((*target_id, 0));
+                            }
+                            break;
+                        }
                     }
                 }
             }
         }
 
-        // Remove dead lasers (in reverse order to preserve indices)
-        dead_lasers.sort_unstable();
-        dead_lasers.dedup();
-        for &idx in dead_lasers.iter().rev() {
-            if idx < self.lasers.len() {
-                self.lasers.swap_remove(idx);
+        self.lasers.retain(|l| l.lifetime > 0.0);
+
+        // Process Dead Aliens & Drop Loot
+        for (dead_id, killer_id) in hit_alien_ids {
+            if let Some(pos) = self.aliens.iter().position(|a| a.id == dead_id) {
+                let alien = self.aliens.remove(pos);
+                let xp = alien.alien_type.xp_reward();
+                let creds = alien.alien_type.credits_reward();
+
+                if let Some(killer) = self.players.get_mut(&killer_id) {
+                    killer.ship.add_xp(xp);
+                    killer.ship.credits += creds;
+                }
+
+                self.loot_boxes.push(LootBox {
+                    id: self.next_entity_id,
+                    position: alien.position,
+                    credits: creds / 2,
+                    mineral: Some((MineralType::Prometium, 3)),
+                    scrap: 2,
+                    plasma_cores: if alien.alien_type == AlienType::Sibelon { 2 } else { 0 },
+                    lifetime: 60.0,
+                });
+                self.next_entity_id += 1;
             }
         }
 
-        // Handle kills: award score & credits
+        // Process PvP Kills
         for (victim_id, killer_id) in kills {
-            let kill_msg = ServerMessage::PlayerKilled {
-                victim_id,
-                killer_id,
-            };
+            let kill_msg = ServerMessage::PlayerKilled { victim_id, killer_id };
             self.broadcast_message(&kill_msg);
 
             if let Some(killer) = self.players.get_mut(&killer_id) {
-                killer.ship.score += 250;
-                killer.ship.credits += 500;
-
-                let stats_msg = ServerMessage::StatsUpdated {
-                    health: killer.ship.health,
-                    shield: killer.ship.shield,
-                    minerals: killer.ship.minerals,
-                    credits: killer.ship.credits,
-                    score: killer.ship.score,
-                };
-                let _ = killer.tx.send(serialize_packet(&stats_msg).unwrap_or_default());
+                killer.ship.add_xp(200);
+                killer.ship.credits += 800;
             }
         }
 
-        // 4. Mineral collection
-        let mut collected_minerals = Vec::new();
-        for (m_idx, mineral) in self.minerals.iter().enumerate() {
-            for (player_id, player) in self.players.iter_mut() {
-                if player.ship.is_alive {
-                    let dist = mineral.position.distance_to(player.ship.position);
-                    if dist <= MINERAL_COLLECT_RADIUS {
-                        collected_minerals.push((
-                            m_idx,
-                            *player_id,
-                            mineral.id,
-                            mineral.mineral_type,
-                            mineral.value,
-                        ));
-                        break;
+        // 5. Loot Boxes Collection
+        let mut collected_box_ids = Vec::new();
+        for loot in &mut self.loot_boxes {
+            loot.lifetime -= TICK_DT;
+            for player in self.players.values_mut() {
+                if player.ship.is_alive && loot.position.distance_to(player.ship.position) < LOOTBOX_RADIUS + SHIP_RADIUS {
+                    collected_box_ids.push(loot.id);
+                    player.ship.credits += loot.credits;
+                    player.ship.cargo.add_scrap(loot.scrap);
+                    if loot.plasma_cores > 0 {
+                        player.ship.cargo.add_plasma_core(loot.plasma_cores);
+                    }
+                    if let Some((m, amt)) = loot.mineral {
+                        let _ = player.ship.cargo.add_mineral(m, amt);
+                    }
+                    break;
+                }
+            }
+        }
+        self.loot_boxes.retain(|lb| lb.lifetime > 0.0 && !collected_box_ids.contains(&lb.id));
+
+        // 6. Mining Simulation
+        for player in self.players.values_mut() {
+            if player.ship.is_mining && player.ship.is_alive {
+                if let Some(target_id) = player.ship.mining_target {
+                    if let Some(mineral) = self.minerals.iter_mut().find(|m| m.id == target_id) {
+                        let dist = player.ship.position.distance_to(mineral.position);
+                        if dist <= MINING_RANGE {
+                            let talent_bonus = 1.0 + (player.ship.talents.logistics_mining_speed as f32 * 0.25);
+                            mineral.health -= MINING_DAMAGE_PER_SEC * talent_bonus * TICK_DT;
+
+                            if mineral.health <= 0.0 {
+                                let m_type = mineral.mineral_type;
+                                player.ship.cargo.add_mineral(m_type, 1);
+                                player.ship.add_xp(m_type.value() * 2);
+
+                                mineral.health = mineral.max_health;
+                                let mut rng = rand::thread_rng();
+                                let d = rng.gen_range(500.0..1600.0);
+                                let a = rng.gen_range(0.0..std::f32::consts::TAU);
+                                mineral.position = Vec2::new(a.cos() * d, a.sin() * d);
+
+                                player.ship.is_mining = false;
+                                player.ship.mining_target = None;
+                            }
+                        } else {
+                            player.ship.is_mining = false;
+                            player.ship.mining_target = None;
+                        }
+                    } else {
+                        player.ship.is_mining = false;
+                        player.ship.mining_target = None;
                     }
                 }
             }
         }
 
-        // Process collected minerals
-        if !collected_minerals.is_empty() {
-            // Sort indices descending to swap_remove safely
-            collected_minerals.sort_by(|a, b| b.0.cmp(&a.0));
-            for (idx, player_id, mineral_id, m_type, val) in collected_minerals {
-                if idx < self.minerals.len() {
-                    self.minerals.swap_remove(idx);
-                }
-
-                if let Some(player) = self.players.get_mut(&player_id) {
-                    player.ship.minerals += 1;
-                    player.ship.credits += val;
-                    player.ship.score += val * 2;
-
-                    let col_msg = ServerMessage::MineralCollected {
-                        player_id,
-                        mineral_id,
-                        mineral_type: m_type,
-                        value: val,
-                        total_minerals: player.ship.minerals,
-                        total_credits: player.ship.credits,
-                    };
-                    self.broadcast_message(&col_msg);
-                }
-            }
-        }
-
-        // Respawn minerals if needed
-        self.populate_minerals();
-
-        // 5. Broadcast World Snapshot
+        // Broadcast World Snapshot
         self.broadcast_snapshot();
     }
 
@@ -325,9 +600,13 @@ impl GameWorld {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64,
+            current_map: self.current_map,
             players: self.players.values().map(|p| p.ship.clone()).collect(),
+            aliens: self.aliens.clone(),
             lasers: self.lasers.clone(),
             minerals: self.minerals.clone(),
+            loot_boxes: self.loot_boxes.clone(),
+            portals: self.portals.clone(),
         };
 
         let msg = ServerMessage::WorldSnapshot(snapshot);
