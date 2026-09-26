@@ -3,7 +3,7 @@ mod db;
 mod game;
 mod ws;
 
-use astrobrawl_shared::TICK_INTERVAL_MS;
+use astrobrawl_shared::{TICK_DT, TICK_INTERVAL_MICROS, TICK_RATE};
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -45,11 +45,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         jwt_secret,
     });
 
-    // Authoritative 30 Hz Game Loop
+    // Authoritative 60 Hz Game Loop
     let loop_world = world.clone();
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(TICK_INTERVAL_MS));
-        info!("Boucle de jeu autoritaire active à 30 Hz (dt = 33ms)");
+        let mut interval = tokio::time::interval(Duration::from_micros(TICK_INTERVAL_MICROS));
+        info!("Boucle de jeu autoritaire active à {} Hz (dt = {:.1}ms)", TICK_RATE, TICK_DT * 1000.0);
         loop {
             interval.tick().await;
             let mut w = loop_world.write().await;

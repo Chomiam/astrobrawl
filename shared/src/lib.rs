@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 // --- Game Constants ---
-pub const TICK_RATE: u64 = 30;
+pub const TICK_RATE: u64 = 60;
 pub const TICK_INTERVAL_MS: u64 = 1000 / TICK_RATE;
+pub const TICK_INTERVAL_MICROS: u64 = 1_000_000 / TICK_RATE;
 pub const TICK_DT: f32 = 1.0 / (TICK_RATE as f32);
 
 pub const WORLD_WIDTH: f32 = 4200.0;
@@ -596,6 +597,60 @@ impl PlayerShip {
         let bonus_sh_pct = self.talents.defense_shield_max as f32 * 0.10;
         self.max_shield = base_sh * (1.0 + bonus_sh_pct);
     }
+
+    pub fn to_save_data(&self) -> PlayerSaveData {
+        PlayerSaveData {
+            username: self.username.clone(),
+            ship_class: self.ship_class,
+            credits: self.credits,
+            score: self.score,
+            xp: self.xp,
+            level: self.level,
+            next_level_xp: self.next_level_xp,
+            talent_points: self.talent_points,
+            talents: self.talents.clone(),
+            cargo: self.cargo.clone(),
+            max_health: self.max_health,
+            max_shield: self.max_shield,
+        }
+    }
+
+    pub fn apply_save_data(&mut self, save: &PlayerSaveData) {
+        if !save.username.is_empty() {
+            self.username = save.username.clone();
+        }
+        self.ship_class = save.ship_class;
+        self.credits = save.credits;
+        self.score = save.score;
+        self.xp = save.xp;
+        self.level = save.level.max(1);
+        self.next_level_xp = save.next_level_xp.max(100);
+        self.talent_points = save.talent_points;
+        self.talents = save.talents.clone();
+        self.cargo = save.cargo.clone();
+        self.max_health = save.max_health.max(50.0);
+        self.max_shield = save.max_shield.max(50.0);
+        self.health = self.health.min(self.max_health);
+        self.shield = self.shield.min(self.max_shield);
+        self.apply_talent_bonuses();
+    }
+}
+
+// --- Player Save Data Structure ---
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlayerSaveData {
+    pub username: String,
+    pub ship_class: ShipClass,
+    pub credits: u32,
+    pub score: u32,
+    pub xp: u32,
+    pub level: u32,
+    pub next_level_xp: u32,
+    pub talent_points: u32,
+    pub talents: TalentTree,
+    pub cargo: CargoHold,
+    pub max_health: f32,
+    pub max_shield: f32,
 }
 
 // --- Lasers ---
@@ -759,6 +814,7 @@ pub struct WorldSnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
     Auth { token: String },
+    SyncProgression { save: PlayerSaveData },
     Input {
         thrust: bool,
         target_angle: f32,

@@ -179,15 +179,29 @@ impl GameWorld {
     pub fn remove_player(&mut self, player_id: PlayerId) {
         if let Some(player) = self.players.remove(&player_id) {
             let pool = self.db_pool.clone();
-            let c = player.ship.credits;
-            let m = player.ship.cargo.total_value_credits();
-            let s = player.ship.score;
+            let save_data = player.ship.to_save_data();
             tokio::spawn(async move {
-                let _ = crate::db::save_player_stats(&pool, player_id, c, m, s);
+                let _ = crate::db::save_player_progression(&pool, player_id, &save_data);
             });
 
             let left_msg = ServerMessage::PlayerLeft { id: player_id };
             self.broadcast_message(&left_msg);
+        }
+    }
+
+    pub fn handle_sync_progression(&mut self, player_id: PlayerId, save: PlayerSaveData) {
+        if let Some(p) = self.players.get_mut(&player_id) {
+            if save.level > p.ship.level 
+                || save.xp > p.ship.xp 
+                || save.credits > p.ship.credits 
+                || (p.ship.level == 1 && p.ship.xp == 0 && (save.credits != 1000 || save.cargo.used_capacity() > 0 || save.talent_points > 0)) {
+                p.ship.apply_save_data(&save);
+                let pool = self.db_pool.clone();
+                let save_clone = p.ship.to_save_data();
+                tokio::spawn(async move {
+                    let _ = crate::db::save_player_progression(&pool, player_id, &save_clone);
+                });
+            }
         }
     }
 
@@ -692,6 +706,18 @@ impl GameWorld {
                         player.ship.mining_target = None;
                     }
                 }
+            }
+        }
+
+        // Periodic auto-save every 5 seconds (5 * TICK_RATE ticks)
+        if self.tick % (TICK_RATE * 5) == 0 {
+            for (player_id, p) in &self.players {
+                let pool = self.db_pool.clone();
+                let pid = *player_id;
+                let save_data = p.ship.to_save_data();
+                tokio::spawn(async move {
+                    let _ = crate::db::save_player_progression(&pool, pid, &save_data);
+                });
             }
         }
 

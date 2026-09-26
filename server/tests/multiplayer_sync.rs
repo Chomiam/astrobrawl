@@ -53,3 +53,41 @@ async fn test_multiplayer_world_sync() {
     let p2_s = p2_snapshot.expect("Player 2 must receive a WorldSnapshot");
     assert_eq!(p2_s.players.len(), 2, "Snapshot should contain both players");
 }
+
+#[tokio::test]
+async fn test_guest_player_progression_persistence() {
+    let pool = init_db(":memory:").expect("DB init failed");
+    let guest_id = "guest_persisted_test_123";
+
+    // 1. Initial join as new guest
+    let player_rec = astrobrawl_server::db::get_or_create_guest_player(&pool, guest_id, "Chomiam").unwrap();
+    assert_eq!(player_rec.credits, 1000);
+    assert_eq!(player_rec.score, 0);
+
+    // 2. Play game, level up, gain credits & cargo
+    let mut ship = PlayerShip::new(player_rec.id, "Chomiam".to_string(), ShipClass::Combat, Vec2::ZERO);
+    ship.credits = 8500;
+    ship.score = 12000;
+    ship.add_xp(650);
+    assert!(ship.level >= 2);
+    ship.cargo.prometium = 42;
+
+    // 3. Save progression (e.g. on disconnect or periodic auto-save)
+    let save_data = ship.to_save_data();
+    astrobrawl_server::db::save_player_progression(&pool, player_rec.id, &save_data).unwrap();
+
+    // 4. Reconnect with the same guest_id after page refresh
+    let refreshed_rec = astrobrawl_server::db::get_or_create_guest_player(&pool, guest_id, "Chomiam").unwrap();
+    assert_eq!(refreshed_rec.id, player_rec.id, "Player ID must be identical across refreshes");
+    assert!(refreshed_rec.save_data.is_some(), "Saved progression must be preserved in DB");
+
+    // 5. Restore saved progression
+    let mut restored_ship = PlayerShip::new(refreshed_rec.id, "Chomiam".to_string(), ShipClass::Combat, Vec2::ZERO);
+    let parsed_save: PlayerSaveData = serde_json::from_str(&refreshed_rec.save_data.unwrap()).unwrap();
+    restored_ship.apply_save_data(&parsed_save);
+
+    assert_eq!(restored_ship.credits, 8500, "Credits must be restored");
+    assert_eq!(restored_ship.score, ship.score, "Score must be restored");
+    assert_eq!(restored_ship.level, ship.level, "Level must be preserved");
+    assert_eq!(restored_ship.cargo.prometium, 42, "Cargo must be preserved");
+}

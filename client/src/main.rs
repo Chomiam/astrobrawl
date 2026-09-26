@@ -166,6 +166,7 @@ pub mod storage {
         pub fn mq_get_player_name(dest_ptr: *mut u8, max_len: usize) -> i32;
         pub fn mq_get_server_url(dest_ptr: *mut u8, max_len: usize) -> i32;
         pub fn mq_get_auth_token(dest_ptr: *mut u8, max_len: usize) -> i32;
+        pub fn mq_get_guest_id(dest_ptr: *mut u8, max_len: usize) -> i32;
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -229,6 +230,22 @@ pub mod storage {
         "guest".to_string()
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_guest_id() -> String {
+        let mut buf = vec![0u8; 512];
+        let len = unsafe { mq_get_guest_id(buf.as_mut_ptr(), buf.len()) };
+        if len > 0 {
+            buf.truncate(len as usize);
+            if let Ok(s) = String::from_utf8(buf) {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+        String::new()
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn save(_bytes: &[u8]) {}
 
@@ -251,23 +268,14 @@ pub mod storage {
     pub fn get_auth_token() -> String {
         "guest".to_string()
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_guest_id() -> String {
+        "desktop_dev".to_string()
+    }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PlayerSaveData {
-    pub username: String,
-    pub ship_class: ShipClass,
-    pub credits: u32,
-    pub score: u32,
-    pub xp: u32,
-    pub level: u32,
-    pub next_level_xp: u32,
-    pub talent_points: u32,
-    pub talents: TalentTree,
-    pub cargo: CargoHold,
-    pub max_health: f32,
-    pub max_shield: f32,
-}
+// PlayerSaveData is defined in astrobrawl_shared
 
 // --- Visual FX ---
 struct Particle {
@@ -429,42 +437,13 @@ impl GameClient {
 
         if let Some(bytes) = storage::load() {
             if let Ok(saved) = astrobrawl_shared::deserialize_packet::<PlayerSaveData>(&bytes) {
-                if !saved.username.is_empty() && (self.local_ship.username == "Pilote Spatial" || self.local_ship.username.is_empty()) {
-                    self.local_ship.username = saved.username;
-                }
-                self.local_ship.ship_class = saved.ship_class;
-                self.local_ship.credits = saved.credits;
-                self.local_ship.score = saved.score;
-                self.local_ship.xp = saved.xp;
-                self.local_ship.level = saved.level.max(1);
-                self.local_ship.next_level_xp = saved.next_level_xp.max(100);
-                self.local_ship.talent_points = saved.talent_points;
-                self.local_ship.talents = saved.talents;
-                self.local_ship.cargo = saved.cargo;
-                self.local_ship.max_health = saved.max_health.max(50.0);
-                self.local_ship.max_shield = saved.max_shield.max(50.0);
-                self.local_ship.health = self.local_ship.max_health;
-                self.local_ship.shield = self.local_ship.max_shield;
-                self.local_ship.apply_talent_bonuses();
+                self.local_ship.apply_save_data(&saved);
             }
         }
     }
 
     pub fn save_progression(&self) {
-        let save_data = PlayerSaveData {
-            username: self.local_ship.username.clone(),
-            ship_class: self.local_ship.ship_class,
-            credits: self.local_ship.credits,
-            score: self.local_ship.score,
-            xp: self.local_ship.xp,
-            level: self.local_ship.level,
-            next_level_xp: self.local_ship.next_level_xp,
-            talent_points: self.local_ship.talent_points,
-            talents: self.local_ship.talents.clone(),
-            cargo: self.local_ship.cargo.clone(),
-            max_health: self.local_ship.max_health,
-            max_shield: self.local_ship.max_shield,
-        };
+        let save_data = self.local_ship.to_save_data();
         if let Ok(bytes) = astrobrawl_shared::serialize_packet(&save_data) {
             storage::save(&bytes);
         }
@@ -598,7 +577,8 @@ impl GameClient {
         let username = storage::get_player_name();
         let safe_username: String = username.chars().filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-').collect();
         let tok = if token.is_empty() { "guest" } else { token };
-        let full_url = format!("{url}?token={tok}&username={safe_username}");
+        let guest_id = storage::get_guest_id();
+        let full_url = format!("{url}?token={tok}&username={safe_username}&guest_id={guest_id}");
 
         net::connect(&full_url);
     }
@@ -625,6 +605,10 @@ impl GameClient {
                 token,
             };
             self.send_message(&auth_msg);
+
+            // Sync current progression to server
+            let save_data = self.local_ship.to_save_data();
+            self.send_message(&ClientMessage::SyncProgression { save: save_data });
         } else if self.connected && !is_connected_now {
             // Disconnected from server
             self.connected = false;
@@ -658,7 +642,19 @@ impl GameClient {
                 current_map,
             } => {
                 self.local_player_id = player_id;
-                self.local_ship = ship;
+
+                let server_has_progress = ship.level > 1 || ship.xp > 0 || ship.credits != 1000 || ship.cargo.used_capacity() > 0 || ship.talent_points > 0;
+                let client_has_progress = self.local_ship.level > 1 || self.local_ship.xp > 0 || self.local_ship.credits != 1000 || self.local_ship.cargo.used_capacity() > 0 || self.local_ship.talent_points > 0;
+
+                if server_has_progress || !client_has_progress {
+                    self.local_ship = ship;
+                } else {
+                    self.local_ship.id = player_id;
+                    self.local_ship.username = username.clone();
+                    let save = self.local_ship.to_save_data();
+                    self.send_message(&ClientMessage::SyncProgression { save });
+                }
+
                 self.current_map = current_map;
                 self.camera_pos = self.local_ship.position;
                 self.connected = true;
@@ -669,6 +665,7 @@ impl GameClient {
                     &format!("Bienvenue commandant {}", username),
                     [0.0, 1.0, 0.6, 1.0],
                 );
+                self.save_progression();
             }
             ServerMessage::AuthError { message } => {
                 self.status_text = format!("Erreur: {}", message);
@@ -713,6 +710,11 @@ impl GameClient {
                 for p in snapshot.players {
                     current_ids.insert(p.id);
                     if p.id == self.local_player_id {
+                        let prev_credits = self.local_ship.credits;
+                        let prev_xp = self.local_ship.xp;
+                        let prev_level = self.local_ship.level;
+                        let prev_cargo = self.local_ship.cargo.clone();
+
                         self.local_ship.health = p.health;
                         self.local_ship.max_health = p.max_health;
                         self.local_ship.shield = p.shield;
@@ -727,6 +729,10 @@ impl GameClient {
                         if self.local_ship.position.distance_to(p.position) > 100.0 {
                             self.local_ship.position = p.position;
                             self.local_ship.velocity = p.velocity;
+                        }
+
+                        if prev_credits != p.credits || prev_xp != p.xp || prev_level != p.level || prev_cargo != p.cargo {
+                            self.save_progression();
                         }
                     }
                     self.players.insert(p.id, p);

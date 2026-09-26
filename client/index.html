@@ -421,11 +421,21 @@
         const ghInput = document.getElementById('github-username');
         if (ghInput) ghInput.value = storedUsername;
 
+        // Ensure persistent guest ID in localStorage
+        let persistentGuestId = localStorage.getItem('astrobrawl_guest_id');
+        if (!persistentGuestId) {
+            persistentGuestId = 'guest_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+            localStorage.setItem('astrobrawl_guest_id', persistentGuestId);
+        }
+
         // Guest login click
         document.getElementById('btn-login-guest').addEventListener('click', async () => {
             const inputVal = (callsignInput ? callsignInput.value.trim() : '') || storedUsername;
             localStorage.setItem('astrobrawl_username', inputVal);
-            startGameSession('guest_offline', inputVal);
+            if (!localStorage.getItem('astrobrawl_auth_token')) {
+                localStorage.setItem('astrobrawl_auth_token', 'guest');
+            }
+            startGameSession('guest', inputVal);
         });
 
         function startGameSession(token, username) {
@@ -443,11 +453,9 @@
             document.getElementById('glcanvas').focus();
         }
 
-        // Auto-login if token exists
-        const storedToken = localStorage.getItem('astrobrawl_auth_token');
-        if (storedToken) {
-            startGameSession(storedToken, storedUsername);
-        }
+        // Auto-login on refresh so game starts immediately without losing context
+        const storedToken = localStorage.getItem('astrobrawl_auth_token') || 'guest';
+        startGameSession(storedToken, storedUsername);
 
         function triggerKey(keyChar) {
             const canvas = document.getElementById('glcanvas');
@@ -880,6 +888,23 @@
                         const token = localStorage.getItem('astrobrawl_auth_token') || 'guest';
                         const encoder = new TextEncoder();
                         const bytes = encoder.encode(token);
+                        const copyLen = Math.min(bytes.length, max_len);
+                        const dest = new Uint8Array(wasm_memory.buffer, dest_ptr, copyLen);
+                        dest.set(bytes.subarray(0, copyLen));
+                        return copyLen;
+                    } catch (e) {
+                        return 0;
+                    }
+                };
+                importObject.env.mq_get_guest_id = function(dest_ptr, max_len) {
+                    try {
+                        let guestId = localStorage.getItem('astrobrawl_guest_id');
+                        if (!guestId) {
+                            guestId = 'guest_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+                            localStorage.setItem('astrobrawl_guest_id', guestId);
+                        }
+                        const encoder = new TextEncoder();
+                        const bytes = encoder.encode(guestId);
                         const copyLen = Math.min(bytes.length, max_len);
                         const dest = new Uint8Array(wasm_memory.buffer, dest_ptr, copyLen);
                         dest.set(bytes.subarray(0, copyLen));

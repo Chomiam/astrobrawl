@@ -37,15 +37,23 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
     // Authenticate player via query parameter token or fallback to guest
     let token = params.get("token").cloned().unwrap_or_default();
     let query_username = params.get("username").cloned().unwrap_or_default();
+    let query_guest_id = params.get("guest_id").cloned().unwrap_or_default();
 
-    let (player_id, username, player_rec) = if !token.is_empty() && token != "guest" && token != "guest_offline" {
+    let guest_uuid = if !query_guest_id.is_empty() {
+        query_guest_id
+    } else if token.starts_with("guest_") {
+        token.clone()
+    } else {
+        uuid_simple()
+    };
+
+    let (player_id, username, player_rec) = if !token.is_empty() && token != "guest" && token != "guest_offline" && !token.starts_with("guest_") {
         match verify_jwt(&token, &state.jwt_secret) {
             Ok(claims) => {
                 let p_id = claims.sub.parse::<u64>().unwrap_or(0);
                 match get_player_by_id(&state.db_pool, p_id) {
                     Ok(Some(rec)) => (rec.id, rec.username.clone(), rec),
                     _ => {
-                        let guest_uuid = uuid_simple();
                         let guest_name = if !query_username.is_empty() { query_username } else { format!("Pilote-{}", &guest_uuid[..4]) };
                         let rec = get_or_create_guest_player(&state.db_pool, &guest_uuid, &guest_name)
                             .unwrap();
@@ -54,7 +62,6 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
                 }
             }
             Err(_) => {
-                let guest_uuid = uuid_simple();
                 let guest_name = if !query_username.is_empty() { query_username } else { format!("Pilote-{}", &guest_uuid[..4]) };
                 let rec = get_or_create_guest_player(&state.db_pool, &guest_uuid, &guest_name)
                     .unwrap();
@@ -62,7 +69,6 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
             }
         }
     } else {
-        let guest_uuid = uuid_simple();
         let guest_name = if !query_username.is_empty() { query_username } else { format!("Pilote-{}", &guest_uuid[..4]) };
         let rec = get_or_create_guest_player(&state.db_pool, &guest_uuid, &guest_name)
             .unwrap();
@@ -74,6 +80,13 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
     let mut ship = PlayerShip::new(player_id, username.clone(), ShipClass::Combat, Vec2::new(0.0, 0.0));
     ship.credits = player_rec.credits;
     ship.score = player_rec.score;
+
+    if let Some(ref save_json) = player_rec.save_data {
+        if let Ok(save_data) = serde_json::from_str::<PlayerSaveData>(save_json) {
+            ship.apply_save_data(&save_data);
+            info!("Progression sauvegardée restaurée pour joueur ID={} ({}): Level={} Credits={} XP={}", player_id, username, ship.level, ship.credits, ship.xp);
+        }
+    }
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
 
@@ -162,6 +175,10 @@ async fn handle_socket(socket: WebSocket, params: HashMap<String, String>, state
                                 if let Ok(pong_bytes) = serialize_packet(&pong) {
                                     let _ = tx_clone.send(pong_bytes);
                                 }
+                            }
+                            ClientMessage::SyncProgression { save } => {
+                                let mut world = world_clone.write().await;
+                                world.handle_sync_progression(player_id, save);
                             }
                             _ => {}
                         }
