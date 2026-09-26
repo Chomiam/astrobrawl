@@ -86,8 +86,8 @@ impl GameWorld {
         }
 
         // 2. Aliens
-        // Streuners (Map 1-1)
-        for _ in 0..10 {
+        // Streuners (Map 1-1: 6 Streuners maximum, peaceful unless attacked)
+        for _ in 0..6 {
             let dist = rng.gen_range(500.0..1200.0);
             let angle = rng.gen_range(0.0..std::f32::consts::TAU);
             self.aliens.push(Alien {
@@ -100,26 +100,6 @@ impl GameWorld {
                 max_health: AlienType::Streuner.max_health(),
                 shield: AlienType::Streuner.max_shield(),
                 max_shield: AlienType::Streuner.max_shield(),
-                target_player_id: None,
-                last_shot_time: 0.0,
-            });
-            self.next_entity_id += 1;
-        }
-
-        // Lordakias
-        for _ in 0..6 {
-            let dist = rng.gen_range(1100.0..1800.0);
-            let angle = rng.gen_range(0.0..std::f32::consts::TAU);
-            self.aliens.push(Alien {
-                id: self.next_entity_id,
-                alien_type: AlienType::Lordakia,
-                position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
-                velocity: Vec2::ZERO,
-                rotation: angle,
-                health: AlienType::Lordakia.max_health(),
-                max_health: AlienType::Lordakia.max_health(),
-                shield: AlienType::Lordakia.max_shield(),
-                max_shield: AlienType::Lordakia.max_shield(),
                 target_player_id: None,
                 last_shot_time: 0.0,
             });
@@ -359,45 +339,68 @@ impl GameWorld {
 
         // Continuous Alien Population Replenishment
         let mut rng = rand::thread_rng();
-        let streuner_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Streuner).count();
-        let lordakia_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Lordakia).count();
+        if self.current_map == MapId::Map1_1 {
+            self.aliens.retain(|a| a.alien_type == AlienType::Streuner);
+            let streuner_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Streuner).count();
+            if streuner_count < 6 {
+                let dist = rng.gen_range(500.0..1200.0);
+                let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+                self.aliens.push(Alien {
+                    id: self.next_entity_id,
+                    alien_type: AlienType::Streuner,
+                    position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
+                    velocity: Vec2::ZERO,
+                    rotation: angle,
+                    health: AlienType::Streuner.max_health(),
+                    max_health: AlienType::Streuner.max_health(),
+                    shield: AlienType::Streuner.max_shield(),
+                    max_shield: AlienType::Streuner.max_shield(),
+                    target_player_id: None,
+                    last_shot_time: 0.0,
+                });
+                self.next_entity_id += 1;
+            }
+        } else {
+            let streuner_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Streuner).count();
+            let lordakia_count = self.aliens.iter().filter(|a| a.health > 0.0 && a.alien_type == AlienType::Lordakia).count();
 
-        if streuner_count < 12 {
-            let dist = rng.gen_range(500.0..1200.0);
-            let angle = rng.gen_range(0.0..std::f32::consts::TAU);
-            self.aliens.push(Alien {
-                id: self.next_entity_id,
-                alien_type: AlienType::Streuner,
-                position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
-                velocity: Vec2::ZERO,
-                rotation: angle,
-                health: AlienType::Streuner.max_health(),
-                max_health: AlienType::Streuner.max_health(),
-                shield: AlienType::Streuner.max_shield(),
-                max_shield: AlienType::Streuner.max_shield(),
-                target_player_id: None,
-                last_shot_time: 0.0,
-            });
-            self.next_entity_id += 1;
-        }
+            if streuner_count < 12 {
+                let dist = rng.gen_range(500.0..1200.0);
+                let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+                self.aliens.push(Alien {
+                    id: self.next_entity_id,
+                    alien_type: AlienType::Streuner,
+                    position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
+                    velocity: Vec2::ZERO,
+                    rotation: angle,
+                    health: AlienType::Streuner.max_health(),
+                    max_health: AlienType::Streuner.max_health(),
+                    shield: AlienType::Streuner.max_shield(),
+                    max_shield: AlienType::Streuner.max_shield(),
+                    target_player_id: None,
+                    last_shot_time: 0.0,
+                });
+                self.next_entity_id += 1;
+            }
 
-        if lordakia_count < 8 {
-            let dist = rng.gen_range(1100.0..1800.0);
-            let angle = rng.gen_range(0.0..std::f32::consts::TAU);
-            self.aliens.push(Alien {
-                id: self.next_entity_id,
-                alien_type: AlienType::Lordakia,
-                position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
-                velocity: Vec2::ZERO,
-                rotation: angle,
-                health: AlienType::Lordakia.max_health(),
-                max_health: AlienType::Lordakia.max_health(),
-                shield: AlienType::Lordakia.max_shield(),
-                max_shield: AlienType::Lordakia.max_shield(),
-                target_player_id: None,
-                last_shot_time: 0.0,
-            });
-            self.next_entity_id += 1;
+            if lordakia_count < 8 {
+                let dist = rng.gen_range(1100.0..1800.0);
+                let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+                self.aliens.push(Alien {
+                    id: self.next_entity_id,
+                    alien_type: AlienType::Lordakia,
+                    position: Vec2::new(angle.cos() * dist, angle.sin() * dist),
+                    velocity: Vec2::ZERO,
+                    rotation: angle,
+                    health: AlienType::Lordakia.max_health(),
+                    max_health: AlienType::Lordakia.max_health(),
+                    shield: AlienType::Lordakia.max_shield(),
+                    max_shield: AlienType::Lordakia.max_shield(),
+                    target_player_id: None,
+                    last_shot_time: 0.0,
+                });
+                self.next_entity_id += 1;
+            }
         }
 
         // 2. Alien AI Simulation
@@ -409,27 +412,56 @@ impl GameWorld {
                 continue;
             }
 
-            // Find closest non-safe player
-            let mut closest_player = None;
-            let mut min_dist = alien.alien_type.aggro_range();
-
-            for (p_id, p) in &self.players {
-                if p.ship.is_alive && !p.ship.is_in_safe_zone {
-                    let d = alien.position.distance_to(p.ship.position);
-                    if d < min_dist {
-                        min_dist = d;
-                        closest_player = Some((*p_id, p.ship.position));
-                    }
-                }
+            // Keep aliens inside bounds and outside safe station
+            let dist_from_center = alien.position.length();
+            if dist_from_center > 1450.0 {
+                let to_center = -alien.position.normalize();
+                alien.rotation = to_center.y.atan2(to_center.x);
+            } else if dist_from_center < 320.0 {
+                let away = alien.position.normalize();
+                alien.rotation = away.y.atan2(away.x);
             }
 
-            if let Some((_target_id, target_pos)) = closest_player {
+            // Map 1-1 Streuners are strictly non-aggressive unless attacked!
+            let is_passive_streuner = self.current_map == MapId::Map1_1 && alien.alien_type == AlienType::Streuner;
+            let mut target_ship_info = None;
+
+            if let Some(target_id) = alien.target_player_id {
+                if let Some(p) = self.players.get(&target_id) {
+                    let d = alien.position.distance_to(p.ship.position);
+                    // Disengage if safe zone, dead, or > 700m away
+                    if p.ship.is_alive && !p.ship.is_in_safe_zone && d <= 700.0 {
+                        target_ship_info = Some((target_id, p.ship.position, d));
+                    } else {
+                        alien.target_player_id = None;
+                    }
+                } else {
+                    alien.target_player_id = None;
+                }
+            } else if !is_passive_streuner {
+                // Aggressive aliens scan for closest player
+                let mut closest_player = None;
+                let mut min_dist = alien.alien_type.aggro_range();
+
+                for (p_id, p) in &self.players {
+                    if p.ship.is_alive && !p.ship.is_in_safe_zone {
+                        let d = alien.position.distance_to(p.ship.position);
+                        if d < min_dist {
+                            min_dist = d;
+                            closest_player = Some((*p_id, p.ship.position, d));
+                        }
+                    }
+                }
+                target_ship_info = closest_player;
+            }
+
+            if let Some((_target_id, target_pos, target_dist)) = target_ship_info {
                 let dir = (target_pos - alien.position).normalize();
                 alien.rotation = dir.y.atan2(dir.x);
                 alien.velocity = dir * alien.alien_type.speed();
                 alien.position += alien.velocity * TICK_DT;
 
-                if now - alien.last_shot_time >= alien.alien_type.laser_cooldown() && min_dist < 420.0 {
+                if now - alien.last_shot_time >= alien.alien_type.laser_cooldown() && target_dist < 420.0 {
                     alien.last_shot_time = now;
                     let spawn_pos = alien.position + dir * 20.0;
                     alien_lasers.push(Laser {
@@ -473,6 +505,7 @@ impl GameWorld {
                 for alien in &mut self.aliens {
                     if alien.health > 0.0 && laser.position.distance_to(alien.position) < 26.0 {
                         laser.lifetime = 0.0;
+                        alien.target_player_id = Some(laser.shooter_id);
                         let dmg = laser.damage;
                         if alien.shield > 0.0 {
                             let absorbed = dmg.min(alien.shield);
