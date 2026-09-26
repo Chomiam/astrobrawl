@@ -562,15 +562,38 @@ impl GameWorld {
                     scrap: 2,
                     plasma_cores: if alien.alien_type == AlienType::Sibelon { 2 } else { 0 },
                     lifetime: 60.0,
+                    owner_id: Some(killer_id),
                 });
                 self.next_entity_id += 1;
             }
         }
 
-        // Process PvP Kills
+        // Process PvP Kills & Drop Player Cargo
         for (victim_id, killer_id) in kills {
             let kill_msg = ServerMessage::PlayerKilled { victim_id, killer_id };
             self.broadcast_message(&kill_msg);
+
+            let (drop_pos, drop_creds, drop_scrap) = if let Some(victim) = self.players.get_mut(&victim_id) {
+                let creds = (victim.ship.credits / 10).min(500);
+                victim.ship.credits = victim.ship.credits.saturating_sub(creds);
+                let scrap = victim.ship.cargo.scrap / 2;
+                victim.ship.cargo.scrap -= scrap;
+                (victim.ship.position, creds, scrap)
+            } else {
+                (Vec2::ZERO, 0, 0)
+            };
+
+            self.loot_boxes.push(LootBox {
+                id: self.next_entity_id,
+                position: drop_pos,
+                credits: drop_creds.max(50),
+                mineral: Some((MineralType::Prometium, 2)),
+                scrap: drop_scrap.max(1),
+                plasma_cores: 0,
+                lifetime: 60.0,
+                owner_id: if killer_id != 0 { Some(killer_id) } else { None },
+            });
+            self.next_entity_id += 1;
 
             if let Some(killer) = self.players.get_mut(&killer_id) {
                 killer.ship.add_xp(200);
@@ -583,7 +606,11 @@ impl GameWorld {
         for loot in &mut self.loot_boxes {
             loot.lifetime -= TICK_DT;
             for player in self.players.values_mut() {
-                if player.ship.is_alive && loot.position.distance_to(player.ship.position) < LOOTBOX_RADIUS + SHIP_RADIUS {
+                let can_collect = match loot.owner_id {
+                    Some(owner) => owner == player.ship.id,
+                    None => true,
+                };
+                if can_collect && player.ship.is_alive && loot.position.distance_to(player.ship.position) < LOOTBOX_RADIUS + SHIP_RADIUS {
                     collected_box_ids.push(loot.id);
                     player.ship.credits += loot.credits;
                     player.ship.cargo.add_scrap(loot.scrap);

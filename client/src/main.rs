@@ -1038,11 +1038,26 @@ impl GameClient {
             audio::play(audio::SFX_EXPLOSION);
             self.spawn_explosion(player_pos, RED, 40);
             self.spawn_explosion(player_pos, ORANGE, 30);
+
+            // Drop player cargo box upon death (lasts 60s / 1 min)
+            let drop_creds = (self.local_ship.credits / 10).min(500);
+            let drop_scrap = self.local_ship.cargo.scrap / 2;
+            dropped_loot.push(LootBox {
+                id: self.next_entity_id,
+                position: player_pos,
+                credits: drop_creds.max(50),
+                mineral: Some((MineralType::Prometium, 2)),
+                scrap: drop_scrap.max(1),
+                plasma_cores: 0,
+                lifetime: 60.0,
+                owner_id: None,
+            });
+            self.next_entity_id += 1;
         }
 
         self.lasers.retain(|l| l.lifetime > 0.0);
 
-        // Handle Dead Aliens & Drop Loot Boxes
+        // Handle Dead Aliens & Drop Loot Boxes (lasts 1 min, only killer can pick up)
         for (dead_id, killer_id) in hit_alien_ids {
             if let Some(pos) = self.aliens.iter().position(|a| a.id == dead_id) {
                 let alien = self.aliens.remove(pos);
@@ -1075,7 +1090,7 @@ impl GameClient {
                     p.add_xp(xp);
                 }
 
-                // Drop Cargo Box
+                // Drop Cargo Box with 60s lifetime and exclusive ownership for killer
                 dropped_loot.push(LootBox {
                     id: self.next_entity_id,
                     position: alien.position,
@@ -1084,6 +1099,7 @@ impl GameClient {
                     scrap: 2,
                     plasma_cores: if alien.alien_type == AlienType::Sibelon { 2 } else { 0 },
                     lifetime: 60.0,
+                    owner_id: Some(killer_id),
                 });
                 self.next_entity_id += 1;
             }
@@ -1091,25 +1107,33 @@ impl GameClient {
 
         self.loot_boxes.extend(dropped_loot);
 
-        // Loot Box Collection
+        // Loot Box Collection (Only allowed if player is the owner or box is unassigned)
         let mut collected_box_ids = Vec::new();
         let mut collected_notifications = Vec::new();
 
         for loot in &mut self.loot_boxes {
             loot.lifetime -= dt;
-            if loot.position.distance_to(player_pos) < LOOTBOX_RADIUS + SHIP_RADIUS && self.local_ship.is_alive {
-                collected_box_ids.push(loot.id);
-                audio::play(audio::SFX_COLLECT);
-                self.local_ship.credits += loot.credits;
-                self.local_ship.cargo.add_scrap(loot.scrap);
-                if loot.plasma_cores > 0 {
-                    self.local_ship.cargo.add_plasma_core(loot.plasma_cores);
-                }
-                if let Some((m, amt)) = loot.mineral {
-                    let _ = self.local_ship.cargo.add_mineral(m, amt);
-                }
 
-                collected_notifications.push((loot.credits, loot.scrap));
+            let can_collect = match loot.owner_id {
+                Some(owner) => owner == self.local_player_id,
+                None => true,
+            };
+
+            if loot.position.distance_to(player_pos) < LOOTBOX_RADIUS + SHIP_RADIUS && self.local_ship.is_alive {
+                if can_collect {
+                    collected_box_ids.push(loot.id);
+                    audio::play(audio::SFX_COLLECT);
+                    self.local_ship.credits += loot.credits;
+                    self.local_ship.cargo.add_scrap(loot.scrap);
+                    if loot.plasma_cores > 0 {
+                        self.local_ship.cargo.add_plasma_core(loot.plasma_cores);
+                    }
+                    if let Some((m, amt)) = loot.mineral {
+                        let _ = self.local_ship.cargo.add_mineral(m, amt);
+                    }
+
+                    collected_notifications.push((loot.credits, loot.scrap));
+                }
             }
         }
 
@@ -1755,19 +1779,32 @@ async fn main() {
             }
         }
 
-        // 8. Loot Boxes (Boîtes de Fret)
+        // 8. Loot Boxes (Boîtes de Fret avec minuteur 1 min et indicateur propriétaire)
         for loot in &game.loot_boxes {
             let lx = loot.position.x - game.camera_pos.x + half_screen.x;
             let ly = loot.position.y - game.camera_pos.y + half_screen.y;
 
             let size = 16.0;
-            draw_rectangle(lx - size * 0.5, ly - size * 0.5, size, size, Color::new(0.1, 0.6, 0.9, 0.85));
-            draw_rectangle_lines(lx - size * 0.5, ly - size * 0.5, size, size, 2.0, mocha::YELLOW);
+            let is_mine = match loot.owner_id {
+                Some(owner) => owner == game.local_player_id,
+                None => true,
+            };
+
+            let border_col = if is_mine { mocha::YELLOW } else { mocha::RED };
+            let bg_col = if is_mine { Color::new(0.1, 0.6, 0.9, 0.85) } else { Color::new(0.4, 0.1, 0.15, 0.85) };
+
+            draw_rectangle(lx - size * 0.5, ly - size * 0.5, size, size, bg_col);
+            draw_rectangle_lines(lx - size * 0.5, ly - size * 0.5, size, size, 2.0, border_col);
             draw_circle(lx, ly, 3.0, WHITE);
 
-            let box_text = "📦 FRET";
-            let bwd = measure_crisp_text(custom_font.as_ref(), box_text, 12.0);
-            draw_crisp_text_shadow(custom_font.as_ref(), box_text, lx - bwd.width * 0.5, ly - 14.0, 12.0, mocha::YELLOW);
+            let remaining_s = (loot.lifetime.max(0.0).ceil()) as u32;
+            let box_text = if is_mine {
+                format!("📦 FRET ({}s)", remaining_s)
+            } else {
+                format!("🔒 FRET RÉSERVÉ ({}s)", remaining_s)
+            };
+            let bwd = measure_crisp_text(custom_font.as_ref(), &box_text, 12.0);
+            draw_crisp_text_shadow(custom_font.as_ref(), &box_text, lx - bwd.width * 0.5, ly - 14.0, 12.0, border_col);
         }
 
         // 9. Lasers

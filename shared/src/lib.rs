@@ -495,6 +495,8 @@ pub struct LootBox {
     pub scrap: u32,
     pub plasma_cores: u32,
     pub lifetime: f32,
+    #[serde(default)]
+    pub owner_id: Option<PlayerId>,
 }
 
 // --- Talent Tree ---
