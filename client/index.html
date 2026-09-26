@@ -240,6 +240,353 @@
             border-color: var(--ctp-mauve);
             box-shadow: 0 0 10px var(--primary-glow);
         }
+
+        /* ================= CONNECTING OVERLAY (AESTHETIC SCI-FI SCREEN) ================= */
+        #connecting-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 50% 40%, rgba(30, 30, 46, 0.96) 0%, rgba(17, 17, 27, 0.99) 70%, rgba(10, 10, 16, 1) 100%);
+            backdrop-filter: blur(16px);
+            transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+        }
+
+        #connecting-overlay.connected {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(1.05);
+        }
+
+        /* Background Cyber Grid */
+        .conn-grid-bg {
+            position: absolute;
+            inset: -50%;
+            width: 200%;
+            height: 200%;
+            background-image: 
+                linear-gradient(rgba(137, 180, 250, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(137, 180, 250, 0.04) 1px, transparent 1px);
+            background-size: 60px 60px;
+            transform: perspective(600px) rotateX(60deg) translateY(-100px);
+            animation: gridDrift 20s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes gridDrift {
+            0% { transform: perspective(600px) rotateX(60deg) translateY(0); }
+            100% { transform: perspective(600px) rotateX(60deg) translateY(60px); }
+        }
+
+        /* Central Connecting Console Card */
+        .connecting-card {
+            position: relative;
+            width: 520px;
+            max-width: 92vw;
+            background: rgba(24, 24, 37, 0.92);
+            border: 1px solid rgba(203, 166, 247, 0.3);
+            border-radius: 16px;
+            padding: 36px 32px;
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(203, 166, 247, 0.15), inset 0 0 20px rgba(137, 180, 250, 0.04);
+            text-align: center;
+            z-index: 2;
+            overflow: hidden;
+        }
+
+        .connecting-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--ctp-mauve), var(--ctp-sapphire), transparent);
+        }
+
+        /* Header Badge */
+        .conn-header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 14px;
+            background: rgba(203, 166, 247, 0.1);
+            border: 1px solid rgba(203, 166, 247, 0.25);
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            color: var(--ctp-mauve);
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+
+        .pulse-beacon {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--ctp-green);
+            box-shadow: 0 0 10px var(--ctp-green);
+            animation: beaconPulse 1.4s ease-in-out infinite;
+        }
+
+        @keyframes beaconPulse {
+            0%, 100% { opacity: 0.4; transform: scale(0.9); }
+            50% { opacity: 1; transform: scale(1.3); }
+        }
+
+        .conn-title {
+            font-size: 32px;
+            font-weight: 900;
+            letter-spacing: 3px;
+            background: linear-gradient(135deg, #ffffff 0%, var(--ctp-mauve) 50%, var(--ctp-sapphire) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(203, 166, 247, 0.3);
+        }
+
+        .conn-subtitle {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: var(--ctp-subtext0);
+            margin-top: 2px;
+            margin-bottom: 22px;
+            text-transform: uppercase;
+        }
+
+        /* Radar Container */
+        .radar-container {
+            position: relative;
+            width: 140px;
+            height: 140px;
+            margin: 0 auto 20px auto;
+            border-radius: 50%;
+            border: 1px solid rgba(137, 180, 250, 0.35);
+            background: radial-gradient(circle, rgba(137, 180, 250, 0.08) 0%, rgba(17, 17, 27, 0.6) 70%);
+            box-shadow: 0 0 25px rgba(137, 180, 250, 0.2), inset 0 0 25px rgba(137, 180, 250, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .radar-circle {
+            position: absolute;
+            border-radius: 50%;
+            border: 1px dashed rgba(137, 180, 250, 0.25);
+        }
+        .radar-ring-1 { width: 50px; height: 50px; }
+        .radar-ring-2 { width: 95px; height: 95px; }
+        .radar-ring-3 { 
+            width: 138px; 
+            height: 138px; 
+            border-style: solid;
+            animation: radarPulse 2.8s ease-out infinite; 
+        }
+
+        @keyframes radarPulse {
+            0% { transform: scale(0.6); opacity: 0.8; }
+            100% { transform: scale(1.35); opacity: 0; }
+        }
+
+        .radar-sweep {
+            position: absolute;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, transparent 0deg, transparent 270deg, rgba(137, 220, 235, 0.08) 320deg, rgba(137, 220, 235, 0.45) 360deg);
+            animation: radarSweep 2.2s linear infinite;
+        }
+
+        @keyframes radarSweep {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .radar-blip {
+            position: absolute;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--ctp-green);
+            box-shadow: 0 0 8px var(--ctp-green);
+            animation: blipBlink 2.2s infinite;
+        }
+        .blip-1 { top: 32px; left: 45px; animation-delay: 0.3s; }
+        .blip-2 { top: 85px; right: 35px; animation-delay: 1.1s; }
+        .blip-3 { bottom: 25px; left: 65px; animation-delay: 1.8s; }
+
+        @keyframes blipBlink {
+            0%, 100% { opacity: 0.2; transform: scale(0.8); }
+            40% { opacity: 1; transform: scale(1.4); }
+        }
+
+        .radar-core-ship {
+            position: relative;
+            z-index: 3;
+            width: 32px;
+            height: 32px;
+            animation: shipHover 3s ease-in-out infinite;
+        }
+
+        @keyframes shipHover {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-3px) rotate(2deg); }
+        }
+
+        /* Status Pill */
+        .conn-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(30, 30, 46, 0.9);
+            border: 1px solid var(--ctp-surface1);
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--ctp-text);
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .conn-status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--ctp-yellow);
+            box-shadow: 0 0 10px var(--ctp-yellow);
+            animation: statusBlink 1.2s infinite alternate;
+        }
+
+        @keyframes statusBlink {
+            from { opacity: 0.5; }
+            to { opacity: 1; }
+        }
+
+        /* Progress Track & Bar */
+        .conn-progress-track {
+            width: 100%;
+            height: 6px;
+            background: rgba(49, 50, 68, 0.7);
+            border-radius: 3px;
+            margin-bottom: 18px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .conn-progress-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--ctp-sapphire), var(--ctp-mauve), var(--ctp-sky));
+            border-radius: 3px;
+            position: relative;
+            transition: background 0.4s ease;
+        }
+
+        .conn-progress-glow {
+            position: absolute;
+            top: 0;
+            left: -30%;
+            width: 40%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, #ffffff, transparent);
+            animation: progressGlow 1.8s ease-in-out infinite;
+        }
+
+        @keyframes progressGlow {
+            0% { left: -30%; }
+            100% { left: 100%; }
+        }
+
+        /* Tips & Lore Transmission Box */
+        .conn-tips-wrapper {
+            background: rgba(17, 17, 27, 0.75);
+            border: 1px solid rgba(137, 180, 250, 0.2);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 16px;
+            text-align: left;
+            min-height: 78px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .conn-tips-header {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            color: var(--ctp-sky);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            text-transform: uppercase;
+        }
+
+        .conn-tip-content {
+            font-size: 12.5px;
+            line-height: 1.45;
+            color: var(--ctp-text);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            font-style: italic;
+        }
+
+        /* Render Notice */
+        .conn-render-notice {
+            font-size: 11px;
+            color: var(--ctp-subtext0);
+            margin-bottom: 18px;
+            line-height: 1.4;
+            padding: 0 8px;
+        }
+
+        /* Footer / Actions */
+        .conn-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.07);
+            font-size: 12px;
+        }
+
+        .conn-pilot-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--ctp-subtext1);
+        }
+
+        .pilot-name {
+            color: var(--ctp-green);
+            font-weight: 700;
+        }
+
+        .btn-subtle {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--ctp-text);
+            border: 1px solid var(--ctp-surface1);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-subtle:hover {
+            background: rgba(203, 166, 247, 0.15);
+            border-color: var(--ctp-mauve);
+        }
     </style>
 </head>
 <body>
@@ -247,8 +594,81 @@
         <!-- Killfeed -->
         <div id="killfeed"></div>
 
-        <!-- Auth & Connection Overlay -->
-        <div id="auth-overlay">
+        <!-- Connecting / Waiting Screen (Active while not connected to multiplayer server) -->
+        <div id="connecting-overlay">
+            <div class="conn-grid-bg"></div>
+
+            <div class="connecting-card">
+                <!-- Top cybernetic badge -->
+                <div class="conn-header-badge">
+                    <span class="pulse-beacon"></span>
+                    <span id="conn-network-label">LIAISON SUB-SPATIALE // 60 Hz</span>
+                </div>
+
+                <!-- Main Game Title -->
+                <div class="conn-title">ASTROBRAWL</div>
+                <div class="conn-subtitle">SERVEUR MULTIJOUEUR EN TEMPS RÉEL</div>
+
+                <!-- Animated Holographic Space Radar -->
+                <div class="radar-container">
+                    <div class="radar-circle radar-ring-1"></div>
+                    <div class="radar-circle radar-ring-2"></div>
+                    <div class="radar-circle radar-ring-3"></div>
+                    <div class="radar-sweep"></div>
+                    <div class="radar-blip blip-1"></div>
+                    <div class="radar-blip blip-2"></div>
+                    <div class="radar-blip blip-3"></div>
+                    <div class="radar-core-ship">
+                        <svg viewBox="0 0 40 40" style="width: 100%; height: 100%;">
+                            <polygon points="20,4 32,34 20,27 8,34" fill="var(--ctp-mauve)" stroke="#89dceb" stroke-width="1.5" />
+                            <circle cx="20" cy="20" r="3" fill="#a6e3a1" />
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Status readout pill -->
+                <div class="conn-status-pill">
+                    <span class="conn-status-indicator" id="conn-dot"></span>
+                    <span id="conn-status-text">Recherche de la balise stellaire...</span>
+                </div>
+
+                <!-- Segmented Cyber Progress Bar -->
+                <div class="conn-progress-track">
+                    <div class="conn-progress-bar" id="conn-progress-bar">
+                        <div class="conn-progress-glow"></div>
+                    </div>
+                </div>
+
+                <!-- Petits messages sympa pour patienter -->
+                <div class="conn-tips-wrapper">
+                    <div class="conn-tips-header">
+                        <span>📻</span> CANAL DE TRANSMISSION STELLAIRE
+                    </div>
+                    <div class="conn-tip-content" id="conn-tip-text">
+                        🚀 « Réchauffement des réacteurs ioniques et calibration des tuyères de saut... »
+                    </div>
+                </div>
+
+                <!-- Friendly notice for cold start (Render free tier) -->
+                <div id="conn-render-notice" class="conn-render-notice">
+                    ☕ <em>Si le serveur cloud sort d'hyper-sommeil (Render), le réveil prend ~15 à 30 secondes. Votre progression est déjà sauvegardée !</em>
+                </div>
+
+                <!-- Commander identity footer & settings trigger -->
+                <div class="conn-footer">
+                    <div class="conn-pilot-badge">
+                        <span>👨‍🚀 COMMANDANT :</span>
+                        <span id="conn-pilot-name" class="pilot-name">Chomiam</span>
+                    </div>
+                    <button id="btn-open-settings" class="btn-subtle" type="button" title="Modifier le pseudo ou le serveur">
+                        ⚙️ Profil / Serveur
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auth & Connection Settings Modal -->
+        <div id="auth-overlay" class="hidden">
             <div class="auth-card">
                 <div class="game-title">⚡ ASTROBRAWL ⚡</div>
                 <div class="game-subtitle">Multijoueur Spatial 2D • Dark Orbit Style</div>
@@ -453,7 +873,96 @@
             document.getElementById('glcanvas').focus();
         }
 
-        // Auto-login on refresh so game starts immediately without losing context
+        // Rotating atmospheric tips ticker
+        const SPATIAL_TIPS = [
+            "🚀 « Réchauffement des réacteurs ioniques et calibration des tuyères de saut hyper-spatial... »",
+            "☕ « Si le serveur cloud sort de son hyper-sommeil (Render gratuit), le copilote prépare un café spatial... (réveil en 15-30s) »",
+            "📡 « Établissement de la liaison sub-spatiale autoritaire à 60 Hz avec le secteur 1-1... »",
+            "🛡️ « Astuce de vol : La Station Stellaire Alpha au centre (0, 0) offre une zone sûre avec régénération accélérée des boucliers ! »",
+            "👾 « Astuce de pilote : Les Streuners sont pacifiques tant que vous n'ouvrez pas le feu en premier ! »",
+            "💎 « Astuce économique : Le Terbium, l'Endurium et le Seprom se revendent à bon prix à la station. »",
+            "📦 « Astuce tactique : Lorsqu'un ennemi est détruit, sa cargaison vous est exclusivement réservée pendant 60 secondes. »",
+            "🛸 « Scan de l'espace profond : synchronisation des coordonnées des autres commandants en vol... »",
+            "🛰️ « Alignement des canons laser LF-3 et synchronisation de la télémétrie de tir... »",
+            "⚡ « Chargement des condensateurs de bouclier déflecteur et test des blindages en titane... »",
+            "🌌 « Pas de panique : votre progression (crédits, niveau, XP, soute) est automatiquement sauvegardée ! »",
+            "🎯 « Astuce combat : Utilisez la touche [TAB] pour verrouiller instantanément la cible la plus proche. »",
+            "🛸 « Analyse spectrale de l'astéroïde le plus proche : détection de gisements minéraux exploitables. »",
+            "👨‍🚀 « Pressurisation du cockpit terminée. Préparez-vous à entrer en zone de combat spatial ! »"
+        ];
+
+        let tipIdx = 0;
+        function updateTip() {
+            const tipEl = document.getElementById('conn-tip-text');
+            if (!tipEl) return;
+            tipEl.style.opacity = '0';
+            tipEl.style.transform = 'translateY(6px)';
+            setTimeout(() => {
+                tipIdx = (tipIdx + 1) % SPATIAL_TIPS.length;
+                tipEl.innerHTML = SPATIAL_TIPS[tipIdx];
+                tipEl.style.opacity = '1';
+                tipEl.style.transform = 'translateY(0)';
+            }, 300);
+        }
+        setInterval(updateTip, 3800);
+
+        // Update pilot name in connecting screen
+        const pilotNameEl = document.getElementById('conn-pilot-name');
+        if (pilotNameEl) pilotNameEl.innerText = storedUsername;
+
+        // Settings button opens auth modal to change callsign or URL
+        const btnSettings = document.getElementById('btn-open-settings');
+        const authOverlay = document.getElementById('auth-overlay');
+        if (btnSettings && authOverlay) {
+            btnSettings.addEventListener('click', () => {
+                authOverlay.classList.remove('hidden');
+            });
+        }
+
+        // Connection state tracker
+        let isConnectedNow = false;
+        window.setGameConnectionState = function(connected) {
+            isConnectedNow = connected;
+            const overlay = document.getElementById('connecting-overlay');
+            const dot = document.getElementById('conn-dot');
+            const statusText = document.getElementById('conn-status-text');
+            const progressBar = document.getElementById('conn-progress-bar');
+            const pilotName = localStorage.getItem('astrobrawl_username') || 'Chomiam';
+            
+            if (connected) {
+                if (dot) {
+                    dot.style.background = 'var(--ctp-green)';
+                    dot.style.boxShadow = '0 0 14px var(--ctp-green)';
+                }
+                if (statusText) statusText.innerHTML = `✅ <b>Liaison Établie !</b> Bienvenue commandant <b>${pilotName}</b>, décollage...`;
+                if (progressBar) progressBar.style.background = 'linear-gradient(90deg, #a6e3a1, #89dceb)';
+                
+                setTimeout(() => {
+                    if (isConnectedNow && overlay) {
+                        overlay.classList.add('connected');
+                        const canvas = document.getElementById('glcanvas');
+                        if (canvas) canvas.focus();
+                    }
+                }, 600);
+            } else {
+                if (dot) {
+                    dot.style.background = 'var(--ctp-yellow)';
+                    dot.style.boxShadow = '0 0 14px var(--ctp-yellow)';
+                }
+                if (statusText) statusText.innerText = '📡 Recherche du serveur spatial multijoueur...';
+                if (progressBar) progressBar.style.background = 'linear-gradient(90deg, var(--ctp-sapphire), var(--ctp-mauve), var(--ctp-sky))';
+                if (overlay) {
+                    overlay.classList.remove('connected');
+                }
+            }
+        };
+
+        window.updateConnStatus = function(msg) {
+            const statusText = document.getElementById('conn-status-text');
+            if (statusText && !isConnectedNow) statusText.innerText = msg;
+        };
+
+        // Auto-login on refresh so game session is initiated immediately in background
         const storedToken = localStorage.getItem('astrobrawl_auth_token') || 'guest';
         startGameSession(storedToken, storedUsername);
 
@@ -848,15 +1357,24 @@
                         gameWs.binaryType = "arraybuffer";
                         gameWs.onopen = function() {
                             console.log("⚡ [AstroBrawl] Connecté au serveur spatial:", url);
+                            if (window.updateConnStatus) {
+                                window.updateConnStatus("⚡ Connecté ! Synchronisation du monde...");
+                            }
                         };
                         gameWs.onmessage = function(e) {
                             gameIncomingPackets.push(new Uint8Array(e.data));
                         };
                         gameWs.onerror = function(err) {
                             console.warn("⚠️ [AstroBrawl] Erreur WebSocket sur:", url);
+                            if (window.updateConnStatus) {
+                                window.updateConnStatus("⚠️ Recherche du serveur en cours...");
+                            }
                         };
                         gameWs.onclose = function(ev) {
                             console.log("🔌 [AstroBrawl] Connexion serveur fermée (code: " + ev.code + ")");
+                            if (window.setGameConnectionState) {
+                                window.setGameConnectionState(false);
+                            }
                         };
                     } catch (e) {
                         console.error("WS connect error:", e);
@@ -864,6 +1382,11 @@
                 };
                 importObject.env.mq_ws_is_connected = function() {
                     return (gameWs && gameWs.readyState === WebSocket.OPEN) ? 1 : 0;
+                };
+                importObject.env.mq_set_connection_status = function(status) {
+                    if (window.setGameConnectionState) {
+                        window.setGameConnectionState(status === 1);
+                    }
                 };
                 importObject.env.mq_get_server_url = function(dest_ptr, max_len) {
                     try {

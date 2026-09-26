@@ -167,6 +167,7 @@ pub mod storage {
         pub fn mq_get_server_url(dest_ptr: *mut u8, max_len: usize) -> i32;
         pub fn mq_get_auth_token(dest_ptr: *mut u8, max_len: usize) -> i32;
         pub fn mq_get_guest_id(dest_ptr: *mut u8, max_len: usize) -> i32;
+        pub fn mq_set_connection_status(status: i32);
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -246,6 +247,11 @@ pub mod storage {
         String::new()
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_connection_status(status: i32) {
+        unsafe { mq_set_connection_status(status) };
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn save(_bytes: &[u8]) {}
 
@@ -273,6 +279,9 @@ pub mod storage {
     pub fn get_guest_id() -> String {
         "desktop_dev".to_string()
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_connection_status(_status: i32) {}
 }
 
 // PlayerSaveData is defined in astrobrawl_shared
@@ -422,12 +431,11 @@ impl GameClient {
             stars,
         };
 
-        // Initialize offline world entities & other active pilots
-        client.init_offline_world();
         // Load perpetual progression from localStorage
         client.load_progression();
         client
     }
+
 
     pub fn load_progression(&mut self) {
         let stored_name = storage::get_player_name();
@@ -449,126 +457,6 @@ impl GameClient {
         }
     }
 
-    fn init_offline_world(&mut self) {
-        self.minerals.clear();
-        self.aliens.clear();
-        self.portals.clear();
-        self.loot_boxes.clear();
-
-        // 1. Spawning Minerals with Rarity
-        let mineral_distribution = [
-            (MineralType::Prometium, 38), // Orange
-            (MineralType::Endurium, 24),  // Cyan
-            (MineralType::Terbium, 14),   // Green
-            (MineralType::Seprom, 6),     // Purple / Prismatic
-        ];
-
-        for (m_type, count) in mineral_distribution {
-            for i in 0..count {
-                let seed = (self.next_entity_id as f32 + i as f32) * 45.67;
-                let angle = (seed.sin() * 43758.5453).fract() * std::f32::consts::TAU;
-                let dist = 420.0 + ((seed + 1.0).sin() * 43758.5453).fract().abs() * 1450.0;
-                let pos = Vec2::new(angle.cos() * dist, angle.sin() * dist);
-
-                self.minerals.push(Mineral {
-                    id: self.next_entity_id,
-                    mineral_type: m_type,
-                    position: pos,
-                    health: m_type.max_health(),
-                    max_health: m_type.max_health(),
-                });
-                self.next_entity_id += 1;
-            }
-        }
-
-        // 2. Spawning Aliens (Map 1-1: Streuners only, peaceful by default)
-        for i in 0..6 {
-            let seed = (i as f32 + 10.0) * 31.41;
-            let angle = (seed.sin() * 43758.5453).fract() * std::f32::consts::TAU;
-            let dist = 550.0 + ((seed + 2.0).sin() * 43758.5453).fract().abs() * 700.0;
-            let pos = Vec2::new(angle.cos() * dist, angle.sin() * dist);
-
-            self.aliens.push(Alien {
-                id: self.next_entity_id,
-                alien_type: AlienType::Streuner,
-                position: pos,
-                velocity: Vec2::ZERO,
-                rotation: angle,
-                health: AlienType::Streuner.max_health(),
-                max_health: AlienType::Streuner.max_health(),
-                shield: AlienType::Streuner.max_shield(),
-                max_shield: AlienType::Streuner.max_shield(),
-                target_player_id: None,
-                last_shot_time: 0.0,
-            });
-            self.next_entity_id += 1;
-        }
-
-        // 3. Portals
-        // Jump Gate to Sector 1-2
-        self.portals.push(Portal {
-            id: self.next_entity_id,
-            position: Vec2::new(1400.0, 1400.0),
-            radius: 55.0,
-            portal_type: PortalType::MapJump {
-                target_map: MapId::Map1_2,
-                target_pos: Vec2::new(-1300.0, -1300.0),
-            },
-        });
-        self.next_entity_id += 1;
-
-        // Jump Gate to Sector 4-4 (PvP)
-        self.portals.push(Portal {
-            id: self.next_entity_id,
-            position: Vec2::new(-1400.0, -1400.0),
-            radius: 55.0,
-            portal_type: PortalType::MapJump {
-                target_map: MapId::Map4_4,
-                target_pos: Vec2::new(0.0, 0.0),
-            },
-        });
-        self.next_entity_id += 1;
-
-        // Dynamic Event Rifts
-        // 🔴 Red Boss Rift
-        self.portals.push(Portal {
-            id: self.next_entity_id,
-            position: Vec2::new(0.0, -1350.0),
-            radius: 65.0,
-            portal_type: PortalType::EventRift {
-                event_type: EventRiftType::RedBoss,
-                time_left: 360.0,
-            },
-        });
-        self.next_entity_id += 1;
-
-        // 🟢 Green Mineral Rift
-        self.portals.push(Portal {
-            id: self.next_entity_id,
-            position: Vec2::new(-1350.0, 0.0),
-            radius: 65.0,
-            portal_type: PortalType::EventRift {
-                event_type: EventRiftType::GreenMining,
-                time_left: 240.0,
-            },
-        });
-        self.next_entity_id += 1;
-
-        // 🟣 Purple Swarm Rift
-        self.portals.push(Portal {
-            id: self.next_entity_id,
-            position: Vec2::new(1350.0, 0.0),
-            radius: 65.0,
-            portal_type: PortalType::EventRift {
-                event_type: EventRiftType::PurpleSwarm,
-                time_left: 300.0,
-            },
-        });
-        self.next_entity_id += 1;
-
-        // Clear players list (only real connected multiplayer players will be shown)
-        self.players.clear();
-    }
 
     fn try_connect(&mut self, url: &str, token: &str) {
         self.connecting = true;
@@ -600,6 +488,8 @@ impl GameClient {
             self.is_offline_sim = false;
             self.status_text = "Connecté au serveur spatial multijoueur (SYNC TEMPS RÉEL)".to_string();
 
+            storage::set_connection_status(1);
+
             let token = storage::get_auth_token();
             let auth_msg = ClientMessage::Auth {
                 token,
@@ -613,8 +503,10 @@ impl GameClient {
             // Disconnected from server
             self.connected = false;
             self.connecting = false;
-            self.is_offline_sim = true;
+            self.is_offline_sim = false;
             self.status_text = "Déconnecté du serveur... reconnexion automatique en cours".to_string();
+
+            storage::set_connection_status(0);
         }
 
         // Automatic Reconnection loop: retry every 1.5 seconds if disconnected
@@ -659,6 +551,7 @@ impl GameClient {
                 self.camera_pos = self.local_ship.position;
                 self.connected = true;
                 self.is_offline_sim = false;
+                storage::set_connection_status(1);
                 self.status_text = format!("Pilote: {} (En Ligne)", username);
                 self.show_notification(
                     "Connexion Établie",
@@ -669,7 +562,9 @@ impl GameClient {
             }
             ServerMessage::AuthError { message } => {
                 self.status_text = format!("Erreur: {}", message);
-                self.is_offline_sim = true;
+                self.connected = false;
+                self.is_offline_sim = false;
+                storage::set_connection_status(0);
             }
             ServerMessage::WorldSnapshot(snapshot) => {
                 self.connected = true;
@@ -1313,6 +1208,18 @@ async fn main() {
                 client_time: (now * 1000.0) as u64,
             };
             game.send_message(&ping);
+        }
+
+        if !game.connected {
+            // Completely freeze inputs and gameplay simulation while disconnected
+            clear_background(Color::new(0.015, 0.02, 0.05, 1.0));
+            for star in &game.stars {
+                let sx = (star.pos.x - game.camera_pos.x * star.layer).rem_euclid(screen_width() + 100.0) - 50.0;
+                let sy = (star.pos.y - game.camera_pos.y * star.layer).rem_euclid(screen_height() + 100.0) - 50.0;
+                draw_circle(sx, sy, star.size, star.color);
+            }
+            next_frame().await;
+            continue;
         }
 
         // --- Controls & Inputs ---
