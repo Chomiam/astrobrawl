@@ -1,0 +1,12 @@
+[build]
+target = "index.html"
+dist = "dist"
+
+[[hooks]]
+stage = "pre_build"
+command = "cargo"
+command_arguments = ["build", "--package", "astrobrawl-client", "--target", "wasm32-unknown-unknown", "--release"]
+
+[serve]
+port = 8080
+open = false

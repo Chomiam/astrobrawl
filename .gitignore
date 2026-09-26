@@ -1,0 +1,10 @@
+/target
+client/dist
+**/*.rs.bk
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+.env
+.env.local
+.DS_Store

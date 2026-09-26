@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AstroBrawl - Dark Orbit 2D Multiplayer Space Shooter</title>
+    
+    <link data-trunk rel="copy-file" href="mq_js_bundle.js" />
+    <link data-trunk rel="copy-file" href="vercel.json" />
+    <link data-trunk rel="copy-file" href="../target/wasm32-unknown-unknown/release/astrobrawl-client.wasm" />
+
+    <style>
+        :root {
+            --bg-dark: #070913;
+            --panel-bg: rgba(10, 16, 32, 0.85);
+            --panel-border: rgba(0, 229, 255, 0.35);
+            --primary: #00e5ff;
+            --primary-glow: rgba(0, 229, 255, 0.4);
+            --accent-green: #00ff88;
+            --accent-orange: #ff9900;
+            --accent-red: #ff3344;
+            --accent-blue: #3d8bff;
+            --text-main: #e0f2fe;
+            --text-muted: #64748b;
+            --font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: var(--font-family);
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #glcanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            outline: none;
+            display: block;
+            z-index: 1;
+            cursor: crosshair;
+        }
+
+        /* Top HUD Bar */
+        #top-hud {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 8px 20px;
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.15), inset 0 0 10px rgba(0, 229, 255, 0.05);
+            backdrop-filter: blur(8px);
+            pointer-events: auto;
+        }
+
+        .hud-stat {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .icon-credits { background: #ffd700; color: #000; }
+        .icon-minerals { background: #00e5ff; color: #000; }
+        .icon-score { background: #a855f7; color: #fff; }
+
+        .stat-val {
+            color: #fff;
+            text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+        }
+
+        /* Login / Connect Modal */
+        #auth-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at center, rgba(10, 15, 30, 0.88) 0%, rgba(5, 7, 15, 0.98) 100%);
+            backdrop-filter: blur(10px);
+            transition: opacity 0.3s ease;
+        }
+
+        #auth-overlay.hidden {
+            display: none;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .auth-card {
+            width: 440px;
+            max-width: 90vw;
+            background: rgba(13, 20, 40, 0.95);
+            border: 1px solid var(--primary);
+            border-radius: 12px;
+            padding: 32px;
+            box-shadow: 0 0 40px var(--primary-glow);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auth-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+        }
+
+        .game-title {
+            font-size: 32px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, #fff 0%, var(--primary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .game-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .auth-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            border: none;
+        }
+
+        .btn-github {
+            background: #24292e;
+            color: #fff;
+            border: 1px solid #444c56;
+        }
+        .btn-github:hover {
+            background: #2f363d;
+            border-color: #8b949e;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-guest {
+            background: linear-gradient(135deg, #0077b6, #00b4d8);
+            color: #fff;
+        }
+        .btn-guest:hover {
+            background: linear-gradient(135deg, #0096c7, #48cae4);
+            box-shadow: 0 0 20px rgba(0, 180, 216, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .input-group {
+            margin-top: 15px;
+            text-align: left;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+        }
+        .input-field:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 10px var(--primary-glow);
+        }
+
+        /* Controls Help Box */
+        #controls-help {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 10;
+            background: var(--panel-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 12px;
+            color: var(--text-muted);
+            backdrop-filter: blur(6px);
+            pointer-events: none;
+            line-height: 1.6;
+        }
+
+        #controls-help strong {
+            color: var(--primary);
+        }
+
+        /* Killfeed / Log Box */
+        #killfeed {
+            position: absolute;
+            top: 70px;
+            right: 20px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            pointer-events: none;
+        }
+
+        .killfeed-item {
+            background: rgba(15, 23, 42, 0.75);
+            border-left: 3px solid var(--accent-orange);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #e2e8f0;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <!-- Top HUD -->
+        <div id="top-hud">
+            <div class="hud-stat">
+                <span class="stat-icon icon-credits">C</span>
+                <span>Crédits: <span id="hud-credits" class="stat-val">1000</span></span>
+            </div>
+            <div class="hud-stat">
+                <span class="stat-icon icon-minerals">💎</span>
+                <span>Minerais: <span id="hud-minerals" class="stat-val">0</span></span>
+            </div>
+            <div class="hud-stat">
+                <span class="stat-icon icon-score">★</span>
+                <span>Score: <span id="hud-score" class="stat-val">0</span></span>
+            </div>
+            <div class="hud-stat">
+                <span style="color: var(--primary);">Joueur: <span id="hud-player" class="stat-val">Pilote</span></span>
+            </div>
+        </div>
+
+        <!-- Controls Guide -->
+        <div id="controls-help">
+            🎮 <strong>Commandes AstroBrawl :</strong><br>
+            • <strong>Z / Flèche Haut / Clic Droit :</strong> Propulseur (Inertie)<br>
+            • <strong>Souris / Q / D :</strong> Orientation du vaisseau<br>
+            • <strong>Espace / Clic Gauche :</strong> Tirer lasers<br>
+            • <strong>Approche minerais :</strong> Récolte automatique
+        </div>
+
+        <!-- Killfeed -->
+        <div id="killfeed"></div>
+
+        <!-- Auth & Connection Overlay -->
+        <div id="auth-overlay">
+            <div class="auth-card">
+                <div class="game-title">⚡ ASTROBRAWL ⚡</div>
+                <div class="game-subtitle">Multijoueur Spatial 2D • Dark Orbit Style</div>
+
+                <div class="auth-buttons">
+                    <a id="btn-login-github" class="btn btn-github" href="#">
+                        <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+                        </svg>
+                        Connexion avec GitHub
+                    </a>
+
+                    <button id="btn-login-guest" class="btn btn-guest">
+                        🚀 Jouer Immédiatement (Invité)
+                    </button>
+                </div>
+
+                <div class="input-group">
+                    <label for="server-url">URL du Serveur de Jeu :</label>
+                    <input type="text" id="server-url" class="input-field" value="" placeholder="ws://localhost:3000/ws">
+                </div>
+            </div>
+        </div>
+
+        <!-- Macroquad Canvas -->
+        <canvas id="glcanvas" tabindex="1"></canvas>
+    </div>
+
+    <!-- Macroquad WebGL / WASM Loader -->
+    <script src="mq_js_bundle.js"></script>
+    <script>
+        // Server URL configuration
+        const defaultWsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + 
+                             (window.location.hostname === 'localhost' ? 'localhost:3000' : window.location.host) + '/ws';
+        
+        const serverInput = document.getElementById('server-url');
+        serverInput.value = localStorage.getItem('astrobrawl_server_url') || defaultWsUrl;
+
+        serverInput.addEventListener('change', () => {
+            localStorage.setItem('astrobrawl_server_url', serverInput.value);
+        });
+
+        // Check URL search parameters for OAuth callback token
+        const urlParams = new URLSearchParams(window.location.search);
+        const tokenFromUrl = urlParams.get('token');
+        if (tokenFromUrl) {
+            localStorage.setItem('astrobrawl_auth_token', tokenFromUrl);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        // Configure GitHub OAuth button URL
+        const backendOrigin = (window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.origin);
+        document.getElementById('btn-login-github').href = backendOrigin + '/api/auth/github';
+
+        // Guest login click
+        document.getElementById('btn-login-guest').addEventListener('click', async () => {
+            try {
+                const res = await fetch(backendOrigin + '/api/auth/guest', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    localStorage.setItem('astrobrawl_auth_token', data.token);
+                    localStorage.setItem('astrobrawl_username', data.username);
+                    startGameSession(data.token, data.username);
+                } else {
+                    startGameSession('guest_offline', 'Pilote Invité');
+                }
+            } catch (err) {
+                console.warn('Backend not responding to guest auth, starting in direct mode:', err);
+                startGameSession('guest_offline', 'Pilote Invité');
+            }
+        });
+
+        function startGameSession(token, username) {
+            document.getElementById('auth-overlay').classList.add('hidden');
+            document.getElementById('hud-player').innerText = username || 'Pilote';
+            document.getElementById('glcanvas').focus();
+        }
+
+        // Auto-login if token exists
+        const storedToken = localStorage.getItem('astrobrawl_auth_token');
+        const storedUsername = localStorage.getItem('astrobrawl_username');
+        if (storedToken) {
+            startGameSession(storedToken, storedUsername);
+        }
+
+        // Global functions called from Rust / WASM or HUD
+        window.astrobrawl = {
+            getServerUrl: function() {
+                return localStorage.getItem('astrobrawl_server_url') || serverInput.value || defaultWsUrl;
+            },
+            getAuthToken: function() {
+                return localStorage.getItem('astrobrawl_auth_token') || 'guest';
+            },
+            updateHud: function(credits, minerals, score) {
+                document.getElementById('hud-credits').innerText = credits;
+                document.getElementById('hud-minerals').innerText = minerals;
+                document.getElementById('hud-score').innerText = score;
+            },
+            addKillFeed: function(msg) {
+                const feed = document.getElementById('killfeed');
+                const item = document.createElement('div');
+                item.className = 'killfeed-item';
+                item.innerText = msg;
+                feed.appendChild(item);
+                setTimeout(() => item.remove(), 4000);
+            }
+        };
+
+        // Native WebSocket Miniquad Plugin
+        let gameWs = null;
+        let gameIncomingPackets = [];
+
+        miniquad_add_plugin({
+            name: "astrobrawl_net",
+            version: 1,
+            register_plugin: function(importObject) {
+                importObject.env.mq_ws_connect = function(ptr, len) {
+                    const url = UTF8ToString(ptr, len);
+                    try {
+                        gameWs = new WebSocket(url);
+                        gameWs.binaryType = "arraybuffer";
+                        gameWs.onmessage = function(e) {
+                            gameIncomingPackets.push(new Uint8Array(e.data));
+                        };
+                    } catch (e) {
+                        console.error("WS connect error:", e);
+                    }
+                };
+                importObject.env.mq_ws_is_connected = function() {
+                    return (gameWs && gameWs.readyState === WebSocket.OPEN) ? 1 : 0;
+                };
+                importObject.env.mq_ws_send = function(ptr, len) {
+                    if (gameWs && gameWs.readyState === WebSocket.OPEN) {
+                        const bytes = new Uint8Array(wasm_memory.buffer, ptr, len);
+                        gameWs.send(bytes);
+                    }
+                };
+                importObject.env.mq_ws_recv = function(dest_ptr, max_len) {
+                    if (gameIncomingPackets.length === 0) return 0;
+                    const pkt = gameIncomingPackets.shift();
+                    const copyLen = Math.min(pkt.length, max_len);
+                    const dest = new Uint8Array(wasm_memory.buffer, dest_ptr, copyLen);
+                    dest.set(pkt.subarray(0, copyLen));
+                    return copyLen;
+                };
+            }
+        });
+
+        // Load WASM Game binary
+        load("astrobrawl-client.wasm");
+    </script>
+</body>
+</html>
