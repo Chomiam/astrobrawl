@@ -9,6 +9,10 @@
     <link data-trunk rel="copy-file" href="vercel.json" />
     <link data-trunk rel="copy-file" href="../target/wasm32-unknown-unknown/release/astrobrawl-client.wasm" />
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+
     <style>
         :root {
             /* Catppuccin Mocha Palette */
@@ -46,7 +50,7 @@
             --primary-glow: rgba(203, 166, 247, 0.35);
             --text-main: var(--ctp-text);
             --text-muted: var(--ctp-subtext0);
-            --font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            --font-family: 'Rajdhani', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         * {
@@ -642,26 +646,26 @@
                 <!-- Petits messages sympa pour patienter -->
                 <div class="conn-tips-wrapper">
                     <div class="conn-tips-header">
-                        <span>📻</span> CANAL DE TRANSMISSION STELLAIRE
+                        <span style="color:var(--ctp-sky);">◈</span> CANAL DE TRANSMISSION STELLAIRE
                     </div>
                     <div class="conn-tip-content" id="conn-tip-text">
-                        🚀 « Réchauffement des réacteurs ioniques et calibration des tuyères de saut... »
+                        « Réchauffement des réacteurs ioniques et calibration des tuyères de saut... »
                     </div>
                 </div>
 
                 <!-- Friendly notice for cold start (Render free tier) -->
                 <div id="conn-render-notice" class="conn-render-notice">
-                    ☕ <em>Si le serveur cloud sort d'hyper-sommeil (Render), le réveil prend ~15 à 30 secondes. Votre progression est déjà sauvegardée !</em>
+                    ◈ <em>Si le serveur cloud sort d'hyper-sommeil (Render gratuit), le réveil prend ~15 à 30 secondes. Votre progression est déjà sauvegardée !</em>
                 </div>
 
                 <!-- Commander identity footer & settings trigger -->
                 <div class="conn-footer">
                     <div class="conn-pilot-badge">
-                        <span>👨‍🚀 COMMANDANT :</span>
+                        <span>PILOTE :</span>
                         <span id="conn-pilot-name" class="pilot-name">Chomiam</span>
                     </div>
                     <button id="btn-open-settings" class="btn-subtle" type="button" title="Modifier le pseudo ou le serveur">
-                        ⚙️ Profil / Serveur
+                        ⚙ Configuration
                     </button>
                 </div>
             </div>
@@ -670,17 +674,17 @@
         <!-- Auth & Connection Settings Modal -->
         <div id="auth-overlay" class="hidden">
             <div class="auth-card">
-                <div class="game-title">⚡ ASTROBRAWL ⚡</div>
+                <div class="game-title">ASTROBRAWL</div>
                 <div class="game-subtitle">Multijoueur Spatial 2D • Dark Orbit Style</div>
 
                 <div class="input-group" style="margin-top: 0; margin-bottom: 14px;">
-                    <label for="pilot-callsign">👨‍🚀 Nom de Code / Pseudo du Commandant :</label>
+                    <label for="pilot-callsign">Identifiant / Nom de Code du Pilote :</label>
                     <input type="text" id="pilot-callsign" class="input-field" placeholder="ex: Chomiam" value="Chomiam">
                 </div>
 
                 <div class="auth-buttons">
                     <button id="btn-login-guest" class="btn btn-guest">
-                        🚀 Jouer Immédiatement (Mode Invité / Solo)
+                        Jouer Immédiatement (Mode Invité / Solo)
                     </button>
 
                     <button id="btn-login-github" class="btn btn-github">
@@ -692,11 +696,11 @@
                 </div>
 
                 <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
-                    ✨ Cliquez sur "Jouer Immédiatement" ou associez votre profil GitHub pour décoller !
+                    Cliquez sur "Jouer Immédiatement" ou associez votre profil GitHub pour décoller !
                 </div>
 
                 <div class="input-group">
-                    <label for="server-url">🌐 URL du Serveur Multijoueur :</label>
+                    <label for="server-url">URL du Serveur Multijoueur :</label>
                     <input type="text" id="server-url" class="input-field" value="" placeholder="ws://localhost:3000/ws">
                     <div id="server-notice" style="font-size: 11px; color: var(--ctp-subtext0); margin-top: 6px; line-height: 1.3;"></div>
                 </div>
@@ -718,7 +722,7 @@
 
                 <div style="display: flex; gap: 10px; margin-top: 18px;">
                     <button id="btn-validate-github" class="btn btn-github" style="flex: 1;">
-                        ⭐ Valider le Profil
+                        Valider le Profil
                     </button>
                     <button id="btn-cancel-github" class="btn" style="background: rgba(255,255,255,0.1); color: #fff; width: 90px;">
                         Retour
@@ -761,9 +765,9 @@
 
         if (serverNotice) {
             if (isLocal) {
-                serverNotice.innerHTML = `✅ <span style="color:var(--ctp-green);">Connexion Locale Active</span> : synchronisation sur <code>ws://localhost:3000/ws</code>.`;
+                serverNotice.innerHTML = `● <span style="color:var(--ctp-green);">Connexion Locale Active</span> : synchronisation sur <code>ws://localhost:3000/ws</code>.`;
             } else {
-                serverNotice.innerHTML = `🌐 <span style="color:var(--ctp-green);">Serveur Cloud Render Connecté</span> : synchronisation temps réel sur <code>wss://astrobrawl-server.onrender.com/ws</code>.`;
+                serverNotice.innerHTML = `● <span style="color:var(--ctp-green);">Serveur Cloud Render Connecté</span> : synchronisation temps réel sur <code>wss://astrobrawl-server.onrender.com/ws</code>.`;
             }
         }
 
@@ -875,20 +879,20 @@
 
         // Rotating atmospheric tips ticker
         const SPATIAL_TIPS = [
-            "🚀 « Réchauffement des réacteurs ioniques et calibration des tuyères de saut hyper-spatial... »",
-            "☕ « Si le serveur cloud sort de son hyper-sommeil (Render gratuit), le copilote prépare un café spatial... (réveil en 15-30s) »",
-            "📡 « Établissement de la liaison sub-spatiale autoritaire à 60 Hz avec le secteur 1-1... »",
-            "🛡️ « Astuce de vol : La Station Stellaire Alpha au centre (0, 0) offre une zone sûre avec régénération accélérée des boucliers ! »",
-            "👾 « Astuce de pilote : Les Streuners sont pacifiques tant que vous n'ouvrez pas le feu en premier ! »",
-            "💎 « Astuce économique : Le Terbium, l'Endurium et le Seprom se revendent à bon prix à la station. »",
-            "📦 « Astuce tactique : Lorsqu'un ennemi est détruit, sa cargaison vous est exclusivement réservée pendant 60 secondes. »",
-            "🛸 « Scan de l'espace profond : synchronisation des coordonnées des autres commandants en vol... »",
-            "🛰️ « Alignement des canons laser LF-3 et synchronisation de la télémétrie de tir... »",
-            "⚡ « Chargement des condensateurs de bouclier déflecteur et test des blindages en titane... »",
-            "🌌 « Pas de panique : votre progression (crédits, niveau, XP, soute) est automatiquement sauvegardée ! »",
-            "🎯 « Astuce combat : Utilisez la touche [TAB] pour verrouiller instantanément la cible la plus proche. »",
-            "🛸 « Analyse spectrale de l'astéroïde le plus proche : détection de gisements minéraux exploitables. »",
-            "👨‍🚀 « Pressurisation du cockpit terminée. Préparez-vous à entrer en zone de combat spatial ! »"
+            "◈ « Réchauffement des réacteurs ioniques et calibration des tuyères de saut hyper-spatial... »",
+            "◈ « Si le serveur cloud sort de son hyper-sommeil (Render gratuit), le réveil prend 15-30s... »",
+            "◈ « Établissement de la liaison sub-spatiale autoritaire à 60 Hz avec le secteur 1-1... »",
+            "◈ « Astuce de vol : La Station Stellaire Alpha au centre (0, 0) offre une zone sûre avec régénération accélérée des boucliers ! »",
+            "◈ « Astuce de pilote : Les Streuners sont pacifiques tant que vous n'ouvrez pas le feu en premier ! »",
+            "◈ « Astuce économique : Le Terbium, l'Endurium et le Seprom se revendent à bon prix à la station. »",
+            "◈ « Astuce tactique : Lorsqu'un ennemi est détruit, sa cargaison vous est exclusivement réservée pendant 60 secondes. »",
+            "◈ « Scan de l'espace profond : synchronisation des coordonnées des autres commandants en vol... »",
+            "◈ « Alignement des canons laser LF-3 et synchronisation de la télémétrie de tir... »",
+            "◈ « Chargement des condensateurs de bouclier déflecteur et test des blindages en titane... »",
+            "◈ « Pas de panique : votre progression (crédits, niveau, XP, soute) est automatiquement sauvegardée ! »",
+            "◈ « Astuce combat : Utilisez la touche [TAB] pour verrouiller instantanément la cible la plus proche. »",
+            "◈ « Analyse spectrale de l'astéroïde le plus proche : détection de gisements minéraux exploitables. »",
+            "◈ « Pressurisation du cockpit terminée. Préparez-vous à entrer en zone de combat spatial ! »"
         ];
 
         let tipIdx = 0;
@@ -934,7 +938,7 @@
                     dot.style.background = 'var(--ctp-green)';
                     dot.style.boxShadow = '0 0 14px var(--ctp-green)';
                 }
-                if (statusText) statusText.innerHTML = `✅ <b>Liaison Établie !</b> Bienvenue commandant <b>${pilotName}</b>, décollage...`;
+                if (statusText) statusText.innerHTML = `● <b style="color:var(--ctp-green);">Liaison Établie !</b> Bienvenue commandant <b>${pilotName}</b>, décollage...`;
                 if (progressBar) progressBar.style.background = 'linear-gradient(90deg, #a6e3a1, #89dceb)';
                 
                 setTimeout(() => {
@@ -949,7 +953,7 @@
                     dot.style.background = 'var(--ctp-yellow)';
                     dot.style.boxShadow = '0 0 14px var(--ctp-yellow)';
                 }
-                if (statusText) statusText.innerText = '📡 Recherche du serveur spatial multijoueur...';
+                if (statusText) statusText.innerText = 'Recherche du serveur spatial multijoueur...';
                 if (progressBar) progressBar.style.background = 'linear-gradient(90deg, var(--ctp-sapphire), var(--ctp-mauve), var(--ctp-sky))';
                 if (overlay) {
                     overlay.classList.remove('connected');

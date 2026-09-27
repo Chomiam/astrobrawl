@@ -701,10 +701,10 @@ pub enum EventRiftType {
 impl EventRiftType {
     pub fn name(&self) -> &'static str {
         match self {
-            Self::RedBoss => "🔴 Épreuve du Titan Sibelon",
-            Self::GreenMining => "🟢 Filon Émeraude (Seprom/Terbium)",
-            Self::PurpleSwarm => "🟣 Invasion Swarm (Survie)",
-            Self::GoldTreasure => "🟡 Épave Antique (Loot Rare)",
+            Self::RedBoss => "Épreuve du Titan Sibelon",
+            Self::GreenMining => "Filon Émeraude (Seprom/Terbium)",
+            Self::PurpleSwarm => "Invasion Swarm (Survie)",
+            Self::GoldTreasure => "Épave Antique (Loot Rare)",
         }
     }
 
